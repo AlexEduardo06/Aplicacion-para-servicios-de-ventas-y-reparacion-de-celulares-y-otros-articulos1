@@ -453,6 +453,34 @@ async def delete_repair(repair_id: str):
     return {"ok": True}
 
 
+@api_router.get("/backup")
+async def backup_all():
+    transactions = []
+    async for d in db.transactions.find({}, {"_id": 0}):
+        transactions.append(d)
+    phones = []
+    async for d in db.phones.find({}, {"_id": 0}):
+        phones.append(d)
+    repairs = []
+    async for d in db.repairs.find({}, {"_id": 0}):
+        d.setdefault("photos", [])
+        d.setdefault("listo_at", None)
+        repairs.append(d)
+    return {
+        "exported_at": now_iso(),
+        "app": "The Family Solutions",
+        "version": 1,
+        "counts": {
+            "transactions": len(transactions),
+            "phones": len(phones),
+            "repairs": len(repairs),
+        },
+        "transactions": transactions,
+        "phones": phones,
+        "repairs": repairs,
+    }
+
+
 app.include_router(api_router)
 
 app.add_middleware(

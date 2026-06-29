@@ -10,9 +10,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { theme } from "@/src/lib/theme";
+import { AppTheme } from "@/src/lib/theme";
+import { useTheme } from "@/src/lib/theme-context";
 import { api, formatCurrency } from "@/src/lib/api";
 import { shareFullReport } from "@/src/lib/receipt";
+import { shareBackupJson } from "@/src/lib/backup";
 import { storage } from "@/src/utils/storage";
 
 const REMINDER_KEY = "settings.repair_ready_alert_days";
@@ -76,6 +78,8 @@ function parseDate(s: string): Date | null {
 }
 
 export default function MasScreen() {
+  const { theme, mode, toggle } = useTheme();
+  const styles = useMemo(() => buildStyles(theme), [theme]);
   const [preset, setPreset] = useState("30");
   const [customMode, setCustomMode] = useState(false);
   const [startStr, setStartStr] = useState(toISODate(new Date(Date.now() - 30 * 86400000)));
@@ -274,7 +278,7 @@ export default function MasScreen() {
                     amount={row.amount}
                     percent={row.percent}
                     color={theme.color.error}
-                    bg="#FEE2E2"
+                    bg={theme.color.errorSoft}
                   />
                 ))
               ) : (
@@ -341,6 +345,16 @@ export default function MasScreen() {
                 />
                 <Text style={styles.settingUnit}>días</Text>
               </View>
+
+              <Pressable onPress={toggle} style={[styles.settingRow, { paddingTop: 16 }]} testID="btn-toggle-theme">
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.settingLabel}>Modo oscuro</Text>
+                  <Text style={styles.settingSub}>Cambia toda la app a tema oscuro</Text>
+                </View>
+                <View style={[styles.toggle, mode === "dark" && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, mode === "dark" && styles.toggleKnobOn]} />
+                </View>
+              </Pressable>
             </Section>
 
             <Pressable
@@ -351,6 +365,19 @@ export default function MasScreen() {
               <Ionicons name="document-text-outline" size={20} color="#fff" />
               <Text style={styles.exportBtnText}>Exportar Reporte PDF</Text>
             </Pressable>
+
+            <Pressable
+              onPress={async () => {
+                try {
+                  await shareBackupJson();
+                } catch (e) { console.warn(e); }
+              }}
+              style={({ pressed }) => [styles.backupBtn, pressed && { opacity: 0.85 }]}
+              testID="btn-backup-json"
+            >
+              <Ionicons name="download-outline" size={20} color={theme.color.brandPrimary} />
+              <Text style={styles.backupBtnText}>Exportar Respaldo JSON</Text>
+            </Pressable>
           </View>
         )}
       </ScrollView>
@@ -359,6 +386,8 @@ export default function MasScreen() {
 }
 
 function Section({ title, children, testID }: { title: string; children: React.ReactNode; testID?: string }) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => buildStyles(theme), [theme]);
   return (
     <View style={styles.section} testID={testID}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -378,6 +407,8 @@ function Stat({
   color?: string;
   bold?: boolean;
 }) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => buildStyles(theme), [theme]);
   return (
     <View style={styles.statRow}>
       <Text style={styles.statLabel}>{label}</Text>
@@ -399,6 +430,8 @@ function CategoryBar({
   color: string;
   bg: string;
 }) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => buildStyles(theme), [theme]);
   const width = Math.max(2, Math.min(100, percent));
   return (
     <View style={styles.catRow}>
@@ -425,6 +458,8 @@ function RankRow({
   subtitle: string;
   amount: string;
 }) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => buildStyles(theme), [theme]);
   return (
     <View style={styles.rankRow}>
       <View style={styles.rankBadge}>
@@ -439,7 +474,7 @@ function RankRow({
   );
 }
 
-const styles = StyleSheet.create({
+const buildStyles = (theme: AppTheme) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.color.surface },
   header: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm, paddingBottom: theme.spacing.md },
   title: { fontSize: 28, fontWeight: "700", color: theme.color.onSurface },
@@ -535,4 +570,25 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.md, marginBottom: theme.spacing.lg,
   },
   exportBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  backupBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    backgroundColor: theme.color.brandTertiary,
+    paddingVertical: 16, borderRadius: theme.radius.md,
+    marginBottom: theme.spacing.lg,
+    borderWidth: 1, borderColor: theme.color.brandPrimary,
+  },
+  backupBtnText: { color: theme.color.brandPrimary, fontSize: 15, fontWeight: "700" },
+  toggle: {
+    width: 48, height: 28, borderRadius: 14,
+    backgroundColor: theme.color.surfaceTertiary,
+    borderWidth: 1, borderColor: theme.color.border,
+    justifyContent: "center", paddingHorizontal: 2,
+  },
+  toggleOn: { backgroundColor: theme.color.brandPrimary, borderColor: theme.color.brandPrimary },
+  toggleKnob: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: theme.color.surfaceSecondary,
+    shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2,
+  },
+  toggleKnobOn: { transform: [{ translateX: 20 }], backgroundColor: theme.color.onBrandPrimary },
 });

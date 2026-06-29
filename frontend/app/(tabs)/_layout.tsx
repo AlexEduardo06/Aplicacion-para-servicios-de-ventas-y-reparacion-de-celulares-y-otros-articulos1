@@ -1,9 +1,10 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { theme } from "@/src/lib/theme";
+import { useTheme } from "@/src/lib/theme-context";
 import { Platform } from "react-native";
 
 export default function TabsLayout() {
+  const { theme } = useTheme();
   return (
     <Tabs
       screenOptions={{
@@ -22,6 +23,7 @@ export default function TabsLayout() {
           fontSize: 11,
           fontWeight: "600",
         },
+        sceneStyle: { backgroundColor: theme.color.surface },
       }}
     >
       <Tabs.Screen

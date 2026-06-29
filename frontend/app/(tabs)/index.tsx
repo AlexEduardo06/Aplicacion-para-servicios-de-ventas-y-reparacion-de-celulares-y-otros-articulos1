@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -18,7 +18,8 @@ import BottomSheet, {
   BottomSheetView,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
-import { theme } from "@/src/lib/theme";
+import { AppTheme } from "@/src/lib/theme";
+import { useTheme } from "@/src/lib/theme-context";
 import { api, DailySummary, formatCurrency, formatDate, Transaction, TxType } from "@/src/lib/api";
 import { shareTransactionReceipt } from "@/src/lib/receipt";
 
@@ -26,6 +27,9 @@ const CATEGORIES_IN = ["venta", "reparacion", "otro"];
 const CATEGORIES_OUT = ["compra", "gasto", "otro"];
 
 export default function CajaScreen() {
+  const { theme } = useTheme();
+  const styles = useMemo(() => buildStyles(theme), [theme]);
+
   const [summary, setSummary] = useState<DailySummary>({
     ingresos: 0,
     egresos: 0,
@@ -143,7 +147,7 @@ export default function CajaScreen() {
               {formatCurrency(summary.ingresos)}
             </Text>
           </View>
-          <View style={[styles.kpiCard, { backgroundColor: "#FEE2E2" }]} testID="kpi-egresos">
+          <View style={[styles.kpiCard, { backgroundColor: theme.color.errorSoft }]} testID="kpi-egresos">
             <View style={styles.kpiHeader}>
               <Ionicons name="arrow-up-circle" size={18} color={theme.color.error} />
               <Text style={[styles.kpiLabel, { color: theme.color.error }]}>Egresos</Text>
@@ -196,7 +200,7 @@ export default function CajaScreen() {
                     styles.txIcon,
                     {
                       backgroundColor:
-                        tx.type === "ingreso" ? theme.color.brandTertiary : "#FEE2E2",
+                        tx.type === "ingreso" ? theme.color.brandTertiary : theme.color.errorSoft,
                     },
                   ]}
                 >
@@ -332,7 +336,7 @@ function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1).replace("_", " ");
 }
 
-const styles = StyleSheet.create({
+const buildStyles = (theme: AppTheme) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.color.surface },
   header: {
     paddingHorizontal: theme.spacing.lg,

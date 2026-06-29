@@ -20,26 +20,33 @@ import BottomSheet, {
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 import * as ImagePicker from "expo-image-picker";
-import { theme } from "@/src/lib/theme";
+import { AppTheme } from "@/src/lib/theme";
+import { useTheme } from "@/src/lib/theme-context";
 import { api, daysSince, formatCurrency, formatDate, Repair, RepairPhoto, RepairStatus } from "@/src/lib/api";
 import { shareRepairReceipt } from "@/src/lib/receipt";
 import { storage } from "@/src/utils/storage";
 
 const REMINDER_KEY = "settings.repair_ready_alert_days";
 
-const STATUS_META: Record<RepairStatus, { label: string; bg: string; fg: string }> = {
-  recibido: { label: "Recibido", bg: "#E5E7EB", fg: "#374151" },
-  en_progreso: { label: "En Progreso", bg: "#FEF3C7", fg: "#92400E" },
-  listo: { label: "Listo", bg: theme.color.brandTertiary, fg: theme.color.brandPrimary },
-  entregado: { label: "Entregado", bg: "#DCFCE7", fg: theme.color.success },
-};
+function getStatusMeta(theme: AppTheme): Record<RepairStatus, { label: string; bg: string; fg: string }> {
+  return {
+    recibido: { label: "Recibido", bg: theme.color.surfaceTertiary, fg: theme.color.onSurfaceTertiary },
+    en_progreso: { label: "En Progreso", bg: theme.color.warningSoft, fg: theme.color.warningSoftText },
+    listo: { label: "Listo", bg: theme.color.brandTertiary, fg: theme.color.brandPrimary },
+    entregado: { label: "Entregado", bg: theme.color.brandSecondary, fg: theme.color.success },
+  };
+}
 
 const STATUS_FLOW: RepairStatus[] = ["recibido", "en_progreso", "listo", "entregado"];
 
 export default function ReparacionesScreen() {
+  const { theme } = useTheme();
+  const styles = useMemo(() => buildStyles(theme), [theme]);
+  const STATUS_META = useMemo(() => getStatusMeta(theme), [theme]);
+
   const [repairs, setRepairs] = useState<Repair[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<"activas" | "entregadas">("activas");
+  const [tab, setTab] = useState<"activas" | "atrasadas" | "entregadas">("activas");
   const [threshold, setThreshold] = useState(3);
 
   const sheetRef = useRef<BottomSheet>(null);
@@ -74,10 +81,14 @@ export default function ReparacionesScreen() {
   useEffect(() => { load(); }, [load]);
 
   const filtered = useMemo(() => {
-    return repairs.filter((r) =>
-      tab === "activas" ? r.status !== "entregado" : r.status === "entregado"
-    );
-  }, [repairs, tab]);
+    return repairs.filter((r) => {
+      if (tab === "entregadas") return r.status === "entregado";
+      if (tab === "atrasadas") {
+        return r.status === "listo" && !!r.listo_at && daysSince(r.listo_at) >= threshold;
+      }
+      return r.status !== "entregado";
+    });
+  }, [repairs, tab, threshold]);
 
   const overdueIds = useMemo(() => {
     const set = new Set<string>();
@@ -198,8 +209,9 @@ export default function ReparacionesScreen() {
         </View>
 
         <View style={styles.segmented}>
-          {(["activas", "entregadas"] as const).map((t) => {
+          {(["activas", "atrasadas", "entregadas"] as const).map((t) => {
             const active = t === tab;
+            const count = t === "atrasadas" ? overdueCount : null;
             return (
               <Pressable
                 key={t}
@@ -208,7 +220,8 @@ export default function ReparacionesScreen() {
                 testID={`segment-${t}`}
               >
                 <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                  {t === "activas" ? "Activas" : "Entregadas"}
+                  {t === "activas" ? "Activas" : t === "atrasadas" ? "Atrasadas" : "Entregadas"}
+                  {count !== null && count > 0 ? ` (${count})` : ""}
                 </Text>
               </Pressable>
             );
@@ -231,7 +244,7 @@ export default function ReparacionesScreen() {
         <View style={styles.empty} testID="empty-repairs">
           <Ionicons name="construct-outline" size={48} color={theme.color.muted} />
           <Text style={styles.emptyText}>
-            {tab === "activas" ? "No hay reparaciones activas" : "Sin entregas registradas"}
+            {tab === "activas" ? "No hay reparaciones activas" : tab === "atrasadas" ? "Sin reparaciones atrasadas" : "Sin entregas registradas"}
           </Text>
           <Text style={styles.emptySubtext}>Toca + para registrar una reparación</Text>
         </View>
@@ -421,7 +434,7 @@ export default function ReparacionesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const buildStyles = (theme: AppTheme) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.color.surface },
   header: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
@@ -445,23 +458,23 @@ const styles = StyleSheet.create({
   segmentTextActive: { color: theme.color.onSurface },
   reminderBanner: {
     flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: "#FEF3C7",
+    backgroundColor: theme.color.warningSoft,
     paddingHorizontal: 12, paddingVertical: 10,
     borderRadius: theme.radius.md,
     marginTop: theme.spacing.md,
-    borderWidth: 1, borderColor: "#FDE68A",
+    borderWidth: 1, borderColor: theme.color.warningSoftBorder,
   },
-  reminderText: { flex: 1, fontSize: 13, color: "#92400E", lineHeight: 18 },
+  reminderText: { flex: 1, fontSize: 13, color: theme.color.warningSoftText, lineHeight: 18 },
   cardOverdue: { borderColor: theme.color.warning, borderWidth: 2 },
   overdueChip: {
     flexDirection: "row", alignItems: "center", gap: 4,
     alignSelf: "flex-start",
-    backgroundColor: "#FEF3C7",
+    backgroundColor: theme.color.warningSoft,
     paddingHorizontal: 8, paddingVertical: 4,
     borderRadius: theme.radius.pill,
     marginTop: 8,
   },
-  overdueChipText: { fontSize: 11, fontWeight: "700", color: "#92400E" },
+  overdueChipText: { fontSize: 11, fontWeight: "700", color: theme.color.warningSoftText },
   photoSectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   photoAddBtn: {
     flexDirection: "row", alignItems: "center", gap: 4,

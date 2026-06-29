@@ -20,7 +20,8 @@ import BottomSheet, {
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 import * as ImagePicker from "expo-image-picker";
-import { theme } from "@/src/lib/theme";
+import { AppTheme } from "@/src/lib/theme";
+import { useTheme } from "@/src/lib/theme-context";
 import { api, formatCurrency, Phone, PhoneCondition, PhoneStatus } from "@/src/lib/api";
 
 const CONDITIONS: { key: PhoneCondition | "todos"; label: string }[] = [
@@ -31,6 +32,9 @@ const CONDITIONS: { key: PhoneCondition | "todos"; label: string }[] = [
 ];
 
 export default function InventarioScreen() {
+  const { theme } = useTheme();
+  const styles = useMemo(() => buildStyles(theme), [theme]);
+
   const [phones, setPhones] = useState<Phone[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -274,7 +278,7 @@ export default function InventarioScreen() {
                   <View
                     style={[
                       styles.badge,
-                      { backgroundColor: item.status === "disponible" ? theme.color.brandTertiary : "#FEE2E2" },
+                      { backgroundColor: item.status === "disponible" ? theme.color.brandTertiary : theme.color.errorSoft },
                     ]}
                   >
                     <Text
@@ -491,7 +495,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-const styles = StyleSheet.create({
+const buildStyles = (theme: AppTheme) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.color.surface },
   header: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm, backgroundColor: theme.color.surface },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },

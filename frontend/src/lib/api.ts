@@ -106,6 +106,15 @@ export const api = {
     const q = start && end ? `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}` : `days=${days}`;
     return request<{ label: string; brand: string; model: string; count: number; total: number }[]>(`/stats/top-phones?${q}`);
   },
+  backup: () => request<{
+    exported_at: string;
+    app: string;
+    version: number;
+    counts: { transactions: number; phones: number; repairs: number };
+    transactions: Transaction[];
+    phones: Phone[];
+    repairs: Repair[];
+  }>("/backup"),
 
   // Phones
   listPhones: () => request<Phone[]>("/phones"),
