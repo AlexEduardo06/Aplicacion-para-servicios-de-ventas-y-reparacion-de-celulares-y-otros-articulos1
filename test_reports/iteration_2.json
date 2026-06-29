@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend-only retest of two bug fixes for The Family Solutions phone-repair app. BUG 2 (Más tab TDZ 'Cannot access load before initialization'): FIXED — Más tab now loads cleanly, shows 'Reportes' title, range filter (7/30/90/365/Personalizado), all sections (Ingresos por categoría, Egresos por categoría, Top celulares, Top clientes, Inventario, Reparaciones, Ajustes) and the three action buttons (Exportar PDF, Exportar JSON, Importar JSON). No pageerror / no TDZ message in console or DOM. BUG 1 (BottomSheet scroll): FIXED for both Inventario 'Nuevo Equipo' and Reparaciones 'Nueva Reparación'. The inner BottomSheetScrollView reports scrollHeight 901 > clientHeight 694 (delta 207px) and scrollTop manipulation moves the Guardar/Registrar Reparación button up by ~48px, which means scroll is operational and the full form is reachable. Screenshots confirm Guardar (Inventario) and Registrar Reparación (Reparaciones) are visible after scroll. Sell sheet could not be exercised because there are currently 0 phones with status='disponible' in seed data (all 2 are vendido) — this is data state, not a bug; the sell sheet uses the same fixed pattern as the other two so it should behave identically. Dark mode toggle in Ajustes confirmed working visually (Reportes screen rendered with dark surface after toggle).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "ImagePicker.MediaTypeOptions", "issue": "ImagePicker.MediaTypeOptions.Images is deprecated in expo-image-picker SDK 51+. Should use the string 'images' or new MediaType API. Reference: /app/frontend/app/(tabs)/inventario.tsx:178 and /app/frontend/app/(tabs)/reparaciones.tsx:152"},
+      {"component": "BottomSheetView (residual)", "issue": "Reparaciones edit sheet still wraps BottomSheetScrollView inside a BottomSheetView with flex:1. Reference: /app/frontend/app/(tabs)/reparaciones.tsx:344-431. Not part of the reported bug (edit sheet, not new-repair sheet) but the same anti-pattern that caused Bug 1. Consider applying the same fix."},
+      {"component": "Console warnings", "issue": "props.pointerEvents deprecated and shadow* style props deprecated warnings printed during render. Cosmetic but pollutes logs."}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_2.json"],
+  "action_items": [
+    "Both reported bugs are confirmed FIXED. No further action required for the two main bugs.",
+    "(Optional polish) Apply the same BottomSheetScrollView-only pattern to the Reparaciones edit sheet (reparaciones.tsx:344-431) so editing photos/status also scrolls reliably on small screens.",
+    "(Optional) Migrate expo-image-picker MediaTypeOptions.Images → 'images' to remove deprecation warnings.",
+    "(Optional) Could not exercise 'Vender' sheet: no disponible phones in DB. Seed at least one available phone or add a TEST_ phone to allow regression coverage of the sell flow."
+  ],
+  "critical_code_review_comments": [
+    "mas.tsx fix is correct: runRestore is now declared with useCallback AFTER `load` is declared (line 180+), resolving the const TDZ error.",
+    "inventario.tsx and reparaciones.tsx New-* sheets now render BottomSheetScrollView directly as the BottomSheet child with keyboardBehavior='interactive' — this is the documented working pattern for @gorhom/bottom-sheet v4+."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "N/A (frontend-only request)", "frontend": "100% on requested checks (Más loads, Inv sheet scrolls, Rep sheet scrolls, dark-mode toggle, 4 tabs reachable)" },
+  "seed_data_creation": "None created. Existing seed has 8 transactions, 2 phones (both vendido), 3 repairs.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "App is /app/frontend Expo + FastAPI. Bottom-sheet bug pattern: avoid wrapping BottomSheetScrollView inside BottomSheetView+KeyboardAvoidingView — use BottomSheetScrollView as the direct child of BottomSheet. The Sell sheet (inventario.tsx) was not exercised because no available phones exist in DB; future agent should create a TEST_ disponible phone before testing sell flow.",
+  "rca_of_issue": "Bug 1 RCA: previous code wrapped BottomSheetScrollView inside a BottomSheetView that had flex:1 plus a KeyboardAvoidingView. Gesture-handler in gorhom/bottom-sheet then intercepted the vertical pan on the wrapper instead of forwarding to the inner ScrollView, so the content never scrolled. Fix: remove wrappers, let BottomSheetScrollView be the direct child of BottomSheet. Bug 2 RCA: `const runRestore = useCallback(..., [load])` was placed before `const load = useCallback(...)`. Even though both are hooks, the closure for runRestore captured the binding name `load` which, with const TDZ, threw 'Cannot access load before initialization' on first render. Fix: reordered declarations so `load` exists before `runRestore` references it."
+}

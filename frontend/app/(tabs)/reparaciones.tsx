@@ -6,8 +6,6 @@ import {
   Pressable,
   FlatList,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   Image as RNImage,
   ScrollView,
@@ -295,14 +293,17 @@ export default function ReparacionesScreen() {
         index={-1}
         enablePanDownToClose
         snapPoints={["88%"]}
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
         backdropComponent={(props) => (
           <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />
         )}
         backgroundStyle={{ backgroundColor: theme.color.surfaceSecondary }}
       >
-        <BottomSheetView style={styles.sheetContent}>
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-            <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        <BottomSheetScrollView
+          contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: 60 }}
+        >
               <Text style={styles.sheetTitle}>Nueva Reparación</Text>
 
               <Text style={styles.label}>Cliente</Text>
@@ -326,9 +327,7 @@ export default function ReparacionesScreen() {
               <Pressable onPress={submitNew} disabled={saving} style={[styles.submitBtn, saving && { opacity: 0.6 }]} testID="btn-submit-repair">
                 <Text style={styles.submitBtnText}>{saving ? "Guardando..." : "Registrar Reparación"}</Text>
               </Pressable>
-            </BottomSheetScrollView>
-          </KeyboardAvoidingView>
-        </BottomSheetView>
+        </BottomSheetScrollView>
       </BottomSheet>
 
       {/* Edit Status Sheet */}

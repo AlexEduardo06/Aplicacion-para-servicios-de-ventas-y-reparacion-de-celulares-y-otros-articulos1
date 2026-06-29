@@ -100,29 +100,6 @@ export default function MasScreen() {
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreStatus, setRestoreStatus] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
 
-  const runRestore = useCallback(async (mode: "replace" | "merge") => {
-    setRestoreBusy(true);
-    setRestoreStatus(null);
-    try {
-      const result = await pickAndRestoreJson(mode);
-      if (!result) {
-        setRestoreBusy(false);
-        return;
-      }
-      const i = result.inserted;
-      setRestoreStatus({
-        kind: "ok",
-        msg: `Restaurado (${result.mode}): ${i.transactions} transacciones, ${i.phones} celulares, ${i.repairs} reparaciones`,
-      });
-      load();
-      restoreSheetRef.current?.close();
-    } catch (e) {
-      setRestoreStatus({ kind: "err", msg: e instanceof Error ? e.message : "Error al restaurar" });
-    } finally {
-      setRestoreBusy(false);
-    }
-  }, [load]);
-
   useEffect(() => {
     (async () => {
       const v = await storage.getItem<number>(REMINDER_KEY, 3);
@@ -199,6 +176,29 @@ export default function MasScreen() {
   }, [range]);
 
   useEffect(() => { load(); }, [load]);
+
+  const runRestore = useCallback(async (mode: "replace" | "merge") => {
+    setRestoreBusy(true);
+    setRestoreStatus(null);
+    try {
+      const result = await pickAndRestoreJson(mode);
+      if (!result) {
+        setRestoreBusy(false);
+        return;
+      }
+      const i = result.inserted;
+      setRestoreStatus({
+        kind: "ok",
+        msg: `Restaurado (${result.mode}): ${i.transactions} transacciones, ${i.phones} celulares, ${i.repairs} reparaciones`,
+      });
+      load();
+      restoreSheetRef.current?.close();
+    } catch (e) {
+      setRestoreStatus({ kind: "err", msg: e instanceof Error ? e.message : "Error al restaurar" });
+    } finally {
+      setRestoreBusy(false);
+    }
+  }, [load]);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>

@@ -7,8 +7,6 @@ import {
   Pressable,
   TextInput,
   FlatList,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   Image as RNImage,
   Modal,
@@ -18,7 +16,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetView,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 import * as ImagePicker from "expo-image-picker";
@@ -348,14 +345,17 @@ export default function InventarioScreen() {
         index={-1}
         enablePanDownToClose
         snapPoints={["88%"]}
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
         backdropComponent={(props) => (
           <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />
         )}
         backgroundStyle={{ backgroundColor: theme.color.surfaceSecondary }}
       >
-        <BottomSheetView style={styles.sheetContent}>
-          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-            <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        <BottomSheetScrollView
+          contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: 60 }}
+        >
               <Text style={styles.sheetTitle}>{editing ? "Editar Equipo" : "Nuevo Equipo"}</Text>
 
               <Pressable onPress={pickImage} style={styles.photoPicker} testID="btn-pick-image">
@@ -449,9 +449,7 @@ export default function InventarioScreen() {
               <Pressable onPress={submit} disabled={saving} style={[styles.submitBtn, saving && { opacity: 0.6 }]} testID="btn-submit-phone">
                 <Text style={styles.submitBtnText}>{saving ? "Guardando..." : editing ? "Actualizar" : "Guardar"}</Text>
               </Pressable>
-            </BottomSheetScrollView>
-          </KeyboardAvoidingView>
-        </BottomSheetView>
+        </BottomSheetScrollView>
       </BottomSheet>
 
       {/* Sell Phone Sheet */}
@@ -460,15 +458,18 @@ export default function InventarioScreen() {
         index={-1}
         enablePanDownToClose
         snapPoints={["55%"]}
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
         backdropComponent={(props) => (
           <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />
         )}
         backgroundStyle={{ backgroundColor: theme.color.surfaceSecondary }}
       >
-        <BottomSheetView style={styles.sheetContent}>
-          {selling && (
-            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
-              <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        {selling && (
+          <BottomSheetScrollView
+            contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: 60 }}
+          >
                 <Text style={styles.sheetTitle}>Vender Equipo</Text>
                 <View style={styles.sellSummary}>
                   <View style={[styles.phoneImage, { width: 56, height: 56 }]}>
@@ -522,10 +523,8 @@ export default function InventarioScreen() {
                     {sellingBusy ? "Procesando..." : "Confirmar Venta"}
                   </Text>
                 </Pressable>
-              </BottomSheetScrollView>
-            </KeyboardAvoidingView>
-          )}
-        </BottomSheetView>
+          </BottomSheetScrollView>
+        )}
       </BottomSheet>
 
       <Modal visible={scanning} animationType="slide" onRequestClose={() => setScanning(false)} statusBarTranslucent>
