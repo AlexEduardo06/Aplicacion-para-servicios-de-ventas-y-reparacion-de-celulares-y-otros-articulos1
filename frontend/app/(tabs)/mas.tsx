@@ -1,12 +1,19 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  Pressable,
+  TextInput,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { theme } from "@/src/lib/theme";
 import { api, formatCurrency } from "@/src/lib/api";
 
 interface RangeReport {
-  days: number;
   ingresos: number;
   egresos: number;
   balance: number;
@@ -21,8 +28,20 @@ interface CategoryRow {
 interface CategoryReport {
   ingresos: CategoryRow[];
   egresos: CategoryRow[];
-  total_ingresos: number;
-  total_egresos: number;
+}
+
+interface ClientRow {
+  client_name: string;
+  count: number;
+  total: number;
+}
+
+interface PhoneRow {
+  label: string;
+  brand: string;
+  model: string;
+  count: number;
+  total: number;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -33,25 +52,69 @@ const CATEGORY_LABELS: Record<string, string> = {
   otro: "Otros",
 };
 
+const PRESETS: { key: string; label: string; days: number }[] = [
+  { key: "7", label: "7 días", days: 7 },
+  { key: "30", label: "30 días", days: 30 },
+  { key: "90", label: "90 días", days: 90 },
+  { key: "365", label: "1 año", days: 365 },
+];
+
+function toISODate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function parseDate(s: string): Date | null {
+  if (!s) return null;
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const d = new Date(`${s}T00:00:00.000Z`);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 export default function MasScreen() {
-  const [week, setWeek] = useState<RangeReport | null>(null);
-  const [month, setMonth] = useState<RangeReport | null>(null);
+  const [preset, setPreset] = useState("30");
+  const [customMode, setCustomMode] = useState(false);
+  const [startStr, setStartStr] = useState(toISODate(new Date(Date.now() - 30 * 86400000)));
+  const [endStr, setEndStr] = useState(toISODate(new Date()));
+
+  const [report, setReport] = useState<RangeReport | null>(null);
   const [byCat, setByCat] = useState<CategoryReport | null>(null);
+  const [topClients, setTopClients] = useState<ClientRow[]>([]);
+  const [topPhones, setTopPhones] = useState<PhoneRow[]>([]);
   const [counts, setCounts] = useState({ phones: 0, available: 0, sold: 0, repairs: 0, active: 0, delivered: 0 });
   const [loading, setLoading] = useState(true);
 
+  const range = useMemo(() => {
+    if (customMode) {
+      const s = parseDate(startStr);
+      const e = parseDate(endStr);
+      if (s && e) {
+        const endOfDay = new Date(e);
+        endOfDay.setUTCHours(23, 59, 59, 999);
+        return { start: s.toISOString(), end: endOfDay.toISOString(), days: 0, label: `${startStr} → ${endStr}` };
+      }
+      return null;
+    }
+    const days = PRESETS.find((p) => p.key === preset)?.days || 30;
+    return { start: undefined, end: undefined, days, label: `Últimos ${days} días` };
+  }, [customMode, preset, startStr, endStr]);
+
   const load = useCallback(async () => {
+    if (!range) return;
+    setLoading(true);
     try {
-      const [w, m, cat, phones, repairs] = await Promise.all([
-        api.summaryRange(7),
-        api.summaryRange(30),
-        api.summaryByCategory(30),
+      const [r, cat, tc, tp, phones, repairs] = await Promise.all([
+        api.summaryRange(range.days, range.start, range.end),
+        api.summaryByCategory(range.days, range.start, range.end),
+        api.topClients(range.days, range.start, range.end),
+        api.topPhones(range.days, range.start, range.end),
         api.listPhones(),
         api.listRepairs(),
       ]);
-      setWeek(w);
-      setMonth(m);
+      setReport(r);
       setByCat(cat);
+      setTopClients(tc);
+      setTopPhones(tp);
       setCounts({
         phones: phones.length,
         available: phones.filter((p) => p.status === "disponible").length,
@@ -65,7 +128,7 @@ export default function MasScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [range]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -74,79 +137,163 @@ export default function MasScreen() {
       <View style={styles.header}>
         <Text style={styles.brand} testID="brand-name">The Family Solutions</Text>
         <Text style={styles.title}>Reportes</Text>
-        <Text style={styles.subtitle}>Resumen general del negocio</Text>
+        <Text style={styles.subtitle}>{range?.label || "Seleccione un rango"}</Text>
       </View>
 
-      {loading ? (
-        <ActivityIndicator color={theme.color.brandPrimary} style={{ marginTop: 24 }} />
-      ) : (
-        <ScrollView contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: 32 }}>
-          <Section title="Últimos 7 días" testID="report-week">
-            <Stat label="Ingresos" value={formatCurrency(week?.ingresos || 0)} color={theme.color.brandPrimary} />
-            <Stat label="Egresos" value={formatCurrency(week?.egresos || 0)} color={theme.color.error} />
-            <Stat label="Balance" value={formatCurrency(week?.balance || 0)} color={(week?.balance || 0) >= 0 ? theme.color.brandPrimary : theme.color.error} bold />
-          </Section>
+      <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+        {/* Range Filter */}
+        <View style={styles.filterWrap}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+            {PRESETS.map((p) => {
+              const active = !customMode && p.key === preset;
+              return (
+                <Pressable
+                  key={p.key}
+                  onPress={() => { setCustomMode(false); setPreset(p.key); }}
+                  style={[styles.chip, active && styles.chipActive]}
+                  testID={`range-${p.key}`}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{p.label}</Text>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              onPress={() => setCustomMode(true)}
+              style={[styles.chip, customMode && styles.chipActive]}
+              testID="range-custom"
+            >
+              <Ionicons name="calendar-outline" size={14} color={customMode ? "#fff" : theme.color.onSurface} />
+              <Text style={[styles.chipText, customMode && styles.chipTextActive, { marginLeft: 4 }]}>
+                Personalizado
+              </Text>
+            </Pressable>
+          </ScrollView>
 
-          <Section title="Últimos 30 días" testID="report-month">
-            <Stat label="Ingresos" value={formatCurrency(month?.ingresos || 0)} color={theme.color.brandPrimary} />
-            <Stat label="Egresos" value={formatCurrency(month?.egresos || 0)} color={theme.color.error} />
-            <Stat label="Balance" value={formatCurrency(month?.balance || 0)} color={(month?.balance || 0) >= 0 ? theme.color.brandPrimary : theme.color.error} bold />
-          </Section>
-
-          <Section title="Ingresos por categoría (30 días)" testID="report-cat-in">
-            {byCat && byCat.ingresos.length > 0 ? (
-              byCat.ingresos.map((row) => (
-                <CategoryBar
-                  key={`in-${row.category}`}
-                  label={CATEGORY_LABELS[row.category] || row.category}
-                  amount={row.amount}
-                  percent={row.percent}
-                  color={theme.color.brandPrimary}
-                  bg={theme.color.brandTertiary}
+          {customMode && (
+            <View style={styles.customRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dateLabel}>Desde</Text>
+                <TextInput
+                  style={styles.dateInput}
+                  value={startStr}
+                  onChangeText={setStartStr}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={theme.color.muted}
+                  autoCapitalize="none"
+                  testID="input-start-date"
                 />
-              ))
-            ) : (
-              <Text style={styles.emptyCat}>Sin ingresos registrados</Text>
-            )}
-          </Section>
-
-          <Section title="Egresos por categoría (30 días)" testID="report-cat-out">
-            {byCat && byCat.egresos.length > 0 ? (
-              byCat.egresos.map((row) => (
-                <CategoryBar
-                  key={`out-${row.category}`}
-                  label={CATEGORY_LABELS[row.category] || row.category}
-                  amount={row.amount}
-                  percent={row.percent}
-                  color={theme.color.error}
-                  bg="#FEE2E2"
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.dateLabel}>Hasta</Text>
+                <TextInput
+                  style={styles.dateInput}
+                  value={endStr}
+                  onChangeText={setEndStr}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={theme.color.muted}
+                  autoCapitalize="none"
+                  testID="input-end-date"
                 />
-              ))
-            ) : (
-              <Text style={styles.emptyCat}>Sin egresos registrados</Text>
-            )}
-          </Section>
+              </View>
+            </View>
+          )}
+        </View>
 
-          <Section title="Inventario" testID="report-inventory">
-            <Stat label="Total equipos" value={String(counts.phones)} />
-            <Stat label="Disponibles" value={String(counts.available)} color={theme.color.brandPrimary} />
-            <Stat label="Vendidos" value={String(counts.sold)} color={theme.color.muted} />
-          </Section>
+        {loading ? (
+          <ActivityIndicator color={theme.color.brandPrimary} style={{ marginTop: 24 }} />
+        ) : (
+          <View style={{ paddingHorizontal: theme.spacing.lg }}>
+            <Section title={range?.label || ""} testID="report-summary">
+              <Stat label="Ingresos" value={formatCurrency(report?.ingresos || 0)} color={theme.color.brandPrimary} />
+              <Stat label="Egresos" value={formatCurrency(report?.egresos || 0)} color={theme.color.error} />
+              <Stat
+                label="Balance"
+                value={formatCurrency(report?.balance || 0)}
+                color={(report?.balance || 0) >= 0 ? theme.color.brandPrimary : theme.color.error}
+                bold
+              />
+            </Section>
 
-          <Section title="Reparaciones" testID="report-repairs">
-            <Stat label="Total" value={String(counts.repairs)} />
-            <Stat label="Activas" value={String(counts.active)} color={theme.color.warning} />
-            <Stat label="Entregadas" value={String(counts.delivered)} color={theme.color.success} />
-          </Section>
+            <Section title="Ingresos por categoría" testID="report-cat-in">
+              {byCat && byCat.ingresos.length > 0 ? (
+                byCat.ingresos.map((row) => (
+                  <CategoryBar
+                    key={`in-${row.category}`}
+                    label={CATEGORY_LABELS[row.category] || row.category}
+                    amount={row.amount}
+                    percent={row.percent}
+                    color={theme.color.brandPrimary}
+                    bg={theme.color.brandTertiary}
+                  />
+                ))
+              ) : (
+                <Text style={styles.emptyCat}>Sin ingresos en este rango</Text>
+              )}
+            </Section>
 
-          <View style={styles.aboutCard}>
-            <Ionicons name="information-circle-outline" size={20} color={theme.color.brandPrimary} />
-            <Text style={styles.aboutText}>
-              Los datos se sincronizan en tiempo real. Desliza hacia abajo en las pantallas para refrescar.
-            </Text>
+            <Section title="Egresos por categoría" testID="report-cat-out">
+              {byCat && byCat.egresos.length > 0 ? (
+                byCat.egresos.map((row) => (
+                  <CategoryBar
+                    key={`out-${row.category}`}
+                    label={CATEGORY_LABELS[row.category] || row.category}
+                    amount={row.amount}
+                    percent={row.percent}
+                    color={theme.color.error}
+                    bg="#FEE2E2"
+                  />
+                ))
+              ) : (
+                <Text style={styles.emptyCat}>Sin egresos en este rango</Text>
+              )}
+            </Section>
+
+            <Section title="Top celulares vendidos" testID="report-top-phones">
+              {topPhones.length > 0 ? (
+                topPhones.map((p, idx) => (
+                  <RankRow
+                    key={p.label}
+                    rank={idx + 1}
+                    title={p.label}
+                    subtitle={`${p.count} unidad${p.count > 1 ? "es" : ""}`}
+                    amount={formatCurrency(p.total)}
+                  />
+                ))
+              ) : (
+                <Text style={styles.emptyCat}>Aún no hay ventas registradas</Text>
+              )}
+            </Section>
+
+            <Section title="Top clientes (reparaciones)" testID="report-top-clients">
+              {topClients.length > 0 ? (
+                topClients.map((c, idx) => (
+                  <RankRow
+                    key={c.client_name}
+                    rank={idx + 1}
+                    title={c.client_name}
+                    subtitle={`${c.count} reparación${c.count > 1 ? "es" : ""}`}
+                    amount={formatCurrency(c.total)}
+                  />
+                ))
+              ) : (
+                <Text style={styles.emptyCat}>Aún no hay clientes registrados</Text>
+              )}
+            </Section>
+
+            <Section title="Inventario" testID="report-inventory">
+              <Stat label="Total equipos" value={String(counts.phones)} />
+              <Stat label="Disponibles" value={String(counts.available)} color={theme.color.brandPrimary} />
+              <Stat label="Vendidos" value={String(counts.sold)} color={theme.color.muted} />
+            </Section>
+
+            <Section title="Reparaciones" testID="report-repairs">
+              <Stat label="Total" value={String(counts.repairs)} />
+              <Stat label="Activas" value={String(counts.active)} color={theme.color.warning} />
+              <Stat label="Entregadas" value={String(counts.delivered)} color={theme.color.success} />
+            </Section>
           </View>
-        </ScrollView>
-      )}
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -194,7 +341,7 @@ function CategoryBar({
 }) {
   const width = Math.max(2, Math.min(100, percent));
   return (
-    <View style={styles.catRow} testID={`cat-${label.toLowerCase()}`}>
+    <View style={styles.catRow}>
       <View style={styles.catRowHeader}>
         <Text style={styles.catLabel}>{label}</Text>
         <Text style={[styles.catAmount, { color }]}>{formatCurrency(amount)}</Text>
@@ -207,12 +354,57 @@ function CategoryBar({
   );
 }
 
+function RankRow({
+  rank,
+  title,
+  subtitle,
+  amount,
+}: {
+  rank: number;
+  title: string;
+  subtitle: string;
+  amount: string;
+}) {
+  return (
+    <View style={styles.rankRow}>
+      <View style={styles.rankBadge}>
+        <Text style={styles.rankBadgeText}>{rank}</Text>
+      </View>
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text style={styles.rankTitle} numberOfLines={1}>{title}</Text>
+        <Text style={styles.rankSubtitle}>{subtitle}</Text>
+      </View>
+      <Text style={styles.rankAmount}>{amount}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.color.surface },
   header: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm, paddingBottom: theme.spacing.md },
   title: { fontSize: 28, fontWeight: "700", color: theme.color.onSurface },
   brand: { fontSize: 12, fontWeight: "800", color: theme.color.brandPrimary, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 2 },
   subtitle: { fontSize: 14, color: theme.color.muted, marginTop: 2 },
+  filterWrap: { paddingHorizontal: theme.spacing.lg, marginBottom: theme.spacing.md },
+  chipRow: { gap: 8, paddingVertical: theme.spacing.sm, paddingRight: theme.spacing.lg },
+  chip: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    paddingHorizontal: 14, height: 36, borderRadius: theme.radius.pill,
+    borderWidth: 1, borderColor: theme.color.border,
+    backgroundColor: theme.color.surfaceSecondary,
+    flexShrink: 0,
+  },
+  chipActive: { backgroundColor: theme.color.brandPrimary, borderColor: theme.color.brandPrimary },
+  chipText: { fontSize: 13, fontWeight: "600", color: theme.color.onSurface },
+  chipTextActive: { color: "#fff" },
+  customRow: { flexDirection: "row", gap: theme.spacing.md, marginTop: theme.spacing.sm },
+  dateLabel: { fontSize: 12, color: theme.color.muted, fontWeight: "600", marginBottom: 4 },
+  dateInput: {
+    backgroundColor: theme.color.surfaceTertiary,
+    borderRadius: theme.radius.md, paddingHorizontal: 12, paddingVertical: 10,
+    fontSize: 14, color: theme.color.onSurface,
+    borderWidth: 1, borderColor: theme.color.border,
+  },
   section: {
     backgroundColor: theme.color.surfaceSecondary,
     borderRadius: theme.radius.md,
@@ -247,12 +439,19 @@ const styles = StyleSheet.create({
   catBarBg: { height: 8, borderRadius: 4, overflow: "hidden" },
   catBarFill: { height: "100%", borderRadius: 4 },
   catPercent: { fontSize: 11, color: theme.color.muted, marginTop: 4, textAlign: "right" },
-  emptyCat: { fontSize: 13, color: theme.color.muted, paddingVertical: 10, textAlign: "center" },
-  aboutCard: {
-    flexDirection: "row", gap: 10, alignItems: "flex-start",
-    backgroundColor: theme.color.brandTertiary,
-    padding: theme.spacing.md, borderRadius: theme.radius.md,
-    marginTop: theme.spacing.md,
+  emptyCat: { fontSize: 13, color: theme.color.muted, paddingVertical: 14, textAlign: "center" },
+  rankRow: {
+    flexDirection: "row", alignItems: "center",
+    paddingVertical: 10,
+    borderTopWidth: 1, borderTopColor: theme.color.divider,
   },
-  aboutText: { flex: 1, fontSize: 13, color: theme.color.onBrandTertiary, lineHeight: 18 },
+  rankBadge: {
+    width: 28, height: 28, borderRadius: 14,
+    backgroundColor: theme.color.brandTertiary,
+    alignItems: "center", justifyContent: "center",
+  },
+  rankBadgeText: { fontSize: 13, fontWeight: "800", color: theme.color.brandPrimary },
+  rankTitle: { fontSize: 14, fontWeight: "700", color: theme.color.onSurface },
+  rankSubtitle: { fontSize: 12, color: theme.color.muted, marginTop: 2 },
+  rankAmount: { fontSize: 14, fontWeight: "800", color: theme.color.brandPrimary },
 });

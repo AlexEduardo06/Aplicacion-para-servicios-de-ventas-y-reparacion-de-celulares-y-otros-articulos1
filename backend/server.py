@@ -169,11 +169,15 @@ async def summary_today():
 
 
 @api_router.get("/summary/range")
-async def summary_range(days: int = 7):
-    end_dt = datetime.now(timezone.utc)
-    start_dt = end_dt - timedelta(days=days)
+async def summary_range(days: int = 7, start: Optional[str] = None, end: Optional[str] = None):
+    if start and end:
+        start_iso, end_iso = start, end
+    else:
+        end_dt = datetime.now(timezone.utc)
+        start_dt = end_dt - timedelta(days=days)
+        start_iso, end_iso = start_dt.isoformat(), end_dt.isoformat()
     cursor = db.transactions.find(
-        {"date": {"$gte": start_dt.isoformat()}}, {"_id": 0}
+        {"date": {"$gte": start_iso, "$lte": end_iso}}, {"_id": 0}
     )
     ingresos = 0.0
     egresos = 0.0
@@ -184,6 +188,8 @@ async def summary_range(days: int = 7):
             egresos += tx["amount"]
     return {
         "days": days,
+        "start": start_iso,
+        "end": end_iso,
         "ingresos": round(ingresos, 2),
         "egresos": round(egresos, 2),
         "balance": round(ingresos - egresos, 2),
@@ -191,11 +197,15 @@ async def summary_range(days: int = 7):
 
 
 @api_router.get("/summary/by-category")
-async def summary_by_category(days: int = 30):
-    end_dt = datetime.now(timezone.utc)
-    start_dt = end_dt - timedelta(days=days)
+async def summary_by_category(days: int = 30, start: Optional[str] = None, end: Optional[str] = None):
+    if start and end:
+        start_iso, end_iso = start, end
+    else:
+        end_dt = datetime.now(timezone.utc)
+        start_dt = end_dt - timedelta(days=days)
+        start_iso, end_iso = start_dt.isoformat(), end_dt.isoformat()
     cursor = db.transactions.find(
-        {"date": {"$gte": start_dt.isoformat()}}, {"_id": 0}
+        {"date": {"$gte": start_iso, "$lte": end_iso}}, {"_id": 0}
     )
     ingresos: dict[str, float] = {}
     egresos: dict[str, float] = {}
@@ -223,11 +233,74 @@ async def summary_by_category(days: int = 30):
 
     return {
         "days": days,
+        "start": start_iso,
+        "end": end_iso,
         "ingresos": to_list(ingresos, total_in),
         "egresos": to_list(egresos, total_out),
         "total_ingresos": round(total_in, 2),
         "total_egresos": round(total_out, 2),
     }
+
+
+@api_router.get("/stats/top-clients")
+async def top_clients(days: int = 30, start: Optional[str] = None, end: Optional[str] = None, limit: int = 5):
+    if start and end:
+        start_iso, end_iso = start, end
+    else:
+        end_dt = datetime.now(timezone.utc)
+        start_dt = end_dt - timedelta(days=days)
+        start_iso, end_iso = start_dt.isoformat(), end_dt.isoformat()
+    cursor = db.repairs.find(
+        {"created_at": {"$gte": start_iso, "$lte": end_iso}}, {"_id": 0}
+    )
+    agg: dict[str, dict] = {}
+    async for r in cursor:
+        name = r["client_name"]
+        bucket = agg.setdefault(name, {"client_name": name, "count": 0, "total": 0.0})
+        bucket["count"] += 1
+        bucket["total"] += float(r.get("cost", 0) or 0)
+    items = list(agg.values())
+    for it in items:
+        it["total"] = round(it["total"], 2)
+    items.sort(key=lambda x: x["total"], reverse=True)
+    return items[:limit]
+
+
+@api_router.get("/stats/top-phones")
+async def top_phones(days: int = 30, start: Optional[str] = None, end: Optional[str] = None, limit: int = 5):
+    if start and end:
+        start_iso, end_iso = start, end
+    else:
+        end_dt = datetime.now(timezone.utc)
+        start_dt = end_dt - timedelta(days=days)
+        start_iso, end_iso = start_dt.isoformat(), end_dt.isoformat()
+    cursor = db.transactions.find(
+        {
+            "date": {"$gte": start_iso, "$lte": end_iso},
+            "type": "ingreso",
+            "category": "venta",
+            "related_phone_id": {"$ne": None},
+        },
+        {"_id": 0},
+    )
+    agg: dict[str, dict] = {}
+    async for tx in cursor:
+        pid = tx["related_phone_id"]
+        phone = await db.phones.find_one({"id": pid}, {"_id": 0})
+        if not phone:
+            continue
+        key = f"{phone['brand']} {phone['model']}"
+        bucket = agg.setdefault(
+            key,
+            {"label": key, "brand": phone["brand"], "model": phone["model"], "count": 0, "total": 0.0},
+        )
+        bucket["count"] += 1
+        bucket["total"] += float(tx["amount"])
+    items = list(agg.values())
+    for it in items:
+        it["total"] = round(it["total"], 2)
+    items.sort(key=lambda x: x["total"], reverse=True)
+    return items[:limit]
 
 
 # ---- Phones ----

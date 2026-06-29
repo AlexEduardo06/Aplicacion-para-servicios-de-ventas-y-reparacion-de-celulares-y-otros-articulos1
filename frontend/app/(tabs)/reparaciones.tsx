@@ -19,6 +19,7 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import { theme } from "@/src/lib/theme";
 import { api, formatCurrency, formatDate, Repair, RepairStatus } from "@/src/lib/api";
+import { shareRepairReceipt } from "@/src/lib/receipt";
 
 const STATUS_META: Record<RepairStatus, { label: string; bg: string; fg: string }> = {
   recibido: { label: "Recibido", bg: "#E5E7EB", fg: "#374151" },
@@ -274,6 +275,11 @@ export default function ReparacionesScreen() {
                 })}
               </View>
 
+              <Pressable onPress={() => shareRepairReceipt(editing)} style={styles.shareBtn} testID="btn-share-repair">
+                <Ionicons name="share-outline" size={18} color={theme.color.brandPrimary} />
+                <Text style={styles.shareBtnText}>Compartir recibo (WhatsApp / PDF)</Text>
+              </Pressable>
+
               <Pressable onPress={() => removeRepair(editing.id)} style={styles.deleteBtn} testID="btn-delete-repair">
                 <Ionicons name="trash-outline" size={18} color={theme.color.error} />
                 <Text style={styles.deleteBtnText}>Eliminar reparación</Text>
@@ -348,9 +354,16 @@ const styles = StyleSheet.create({
   statusOptionText: { flex: 1, fontSize: 15, fontWeight: "600", color: theme.color.onSurface },
   deleteBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
-    marginTop: theme.spacing.xl, paddingVertical: 14,
+    marginTop: theme.spacing.md, paddingVertical: 14,
     borderRadius: theme.radius.md,
     borderWidth: 1, borderColor: theme.color.error,
   },
   deleteBtnText: { color: theme.color.error, fontWeight: "700" },
+  shareBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    marginTop: theme.spacing.xl, paddingVertical: 14,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.brandTertiary,
+  },
+  shareBtnText: { color: theme.color.brandPrimary, fontWeight: "700" },
 });

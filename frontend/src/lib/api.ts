@@ -73,18 +73,32 @@ export const api = {
   deleteTransaction: (id: string) =>
     request<{ ok: boolean }>(`/transactions/${id}`, { method: "DELETE" }),
   summaryToday: () => request<DailySummary>("/summary/today"),
-  summaryRange: (days: number) =>
-    request<{ days: number; ingresos: number; egresos: number; balance: number }>(
-      `/summary/range?days=${days}`
-    ),
-  summaryByCategory: (days: number) =>
-    request<{
+  summaryRange: (days: number, start?: string, end?: string) => {
+    const q = start && end ? `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}` : `days=${days}`;
+    return request<{ days: number; start: string; end: string; ingresos: number; egresos: number; balance: number }>(
+      `/summary/range?${q}`
+    );
+  },
+  summaryByCategory: (days: number, start?: string, end?: string) => {
+    const q = start && end ? `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}` : `days=${days}`;
+    return request<{
       days: number;
+      start: string;
+      end: string;
       ingresos: { category: string; amount: number; percent: number }[];
       egresos: { category: string; amount: number; percent: number }[];
       total_ingresos: number;
       total_egresos: number;
-    }>(`/summary/by-category?days=${days}`),
+    }>(`/summary/by-category?${q}`);
+  },
+  topClients: (days: number, start?: string, end?: string) => {
+    const q = start && end ? `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}` : `days=${days}`;
+    return request<{ client_name: string; count: number; total: number }[]>(`/stats/top-clients?${q}`);
+  },
+  topPhones: (days: number, start?: string, end?: string) => {
+    const q = start && end ? `start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}` : `days=${days}`;
+    return request<{ label: string; brand: string; model: string; count: number; total: number }[]>(`/stats/top-phones?${q}`);
+  },
 
   // Phones
   listPhones: () => request<Phone[]>("/phones"),

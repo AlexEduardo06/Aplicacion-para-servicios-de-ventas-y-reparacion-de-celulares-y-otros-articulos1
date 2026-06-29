@@ -20,6 +20,7 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import { theme } from "@/src/lib/theme";
 import { api, DailySummary, formatCurrency, formatDate, Transaction, TxType } from "@/src/lib/api";
+import { shareTransactionReceipt } from "@/src/lib/receipt";
 
 const CATEGORIES_IN = ["venta", "reparacion", "otro"];
 const CATEGORIES_OUT = ["compra", "gasto", "otro"];
@@ -220,6 +221,14 @@ export default function CajaScreen() {
                   {tx.type === "ingreso" ? "+" : "-"}
                   {formatCurrency(tx.amount)}
                 </Text>
+                <Pressable
+                  onPress={() => shareTransactionReceipt(tx)}
+                  hitSlop={8}
+                  testID={`tx-share-${tx.id}`}
+                  style={{ marginLeft: 8 }}
+                >
+                  <Ionicons name="share-outline" size={18} color={theme.color.brandPrimary} />
+                </Pressable>
                 <Pressable onPress={() => removeTx(tx.id)} hitSlop={8} testID={`tx-delete-${tx.id}`}>
                   <Ionicons name="trash-outline" size={18} color={theme.color.muted} style={{ marginLeft: 8 }} />
                 </Pressable>
