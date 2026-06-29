@@ -86,6 +86,11 @@ export const api = {
     request<Phone>(`/phones/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deletePhone: (id: string) =>
     request<{ ok: boolean }>(`/phones/${id}`, { method: "DELETE" }),
+  sellPhone: (id: string, price?: number, description?: string) =>
+    request<{ phone: Phone; transaction: Transaction }>(`/phones/${id}/sell`, {
+      method: "POST",
+      body: JSON.stringify({ price, description }),
+    }),
 
   // Repairs
   listRepairs: () => request<Repair[]>("/repairs"),

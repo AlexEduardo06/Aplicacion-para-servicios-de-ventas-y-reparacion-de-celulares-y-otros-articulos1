@@ -236,6 +236,45 @@ async def delete_phone(phone_id: str):
     return {"ok": True}
 
 
+class SellPhoneInput(BaseModel):
+    price: Optional[float] = None
+    description: Optional[str] = ""
+
+
+@api_router.post("/phones/{phone_id}/sell")
+async def sell_phone(phone_id: str, input: SellPhoneInput):
+    phone = await db.phones.find_one({"id": phone_id}, {"_id": 0})
+    if not phone:
+        raise HTTPException(404, "Phone not found")
+    if phone.get("stock", 0) <= 0 or phone.get("status") == "vendido":
+        raise HTTPException(400, "Equipo no disponible")
+
+    sale_price = input.price if input.price and input.price > 0 else phone.get("sell_price", 0)
+
+    new_stock = phone.get("stock", 1) - 1
+    new_status = "vendido" if new_stock <= 0 else "disponible"
+    await db.phones.update_one(
+        {"id": phone_id},
+        {"$set": {"stock": new_stock, "status": new_status}},
+    )
+
+    desc = input.description or f"Venta {phone['brand']} {phone['model']}"
+    tx = {
+        "id": str(uuid.uuid4()),
+        "type": "ingreso",
+        "amount": float(sale_price),
+        "category": "venta",
+        "description": desc,
+        "related_phone_id": phone_id,
+        "related_repair_id": None,
+        "date": now_iso(),
+    }
+    await db.transactions.insert_one(tx)
+    tx.pop("_id", None)
+    updated_phone = await db.phones.find_one({"id": phone_id}, {"_id": 0})
+    return {"phone": updated_phone, "transaction": tx}
+
+
 # ---- Repairs ----
 @api_router.post("/repairs", response_model=Repair)
 async def create_repair(input: RepairCreate):

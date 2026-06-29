@@ -48,6 +48,7 @@ export default function MasScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
+        <Text style={styles.brand} testID="brand-name">The Family Solutions</Text>
         <Text style={styles.title}>Reportes</Text>
         <Text style={styles.subtitle}>Resumen general del negocio</Text>
       </View>
@@ -124,6 +125,7 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.color.surface },
   header: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm, paddingBottom: theme.spacing.md },
   title: { fontSize: 28, fontWeight: "700", color: theme.color.onSurface },
+  brand: { fontSize: 12, fontWeight: "800", color: theme.color.brandPrimary, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 2 },
   subtitle: { fontSize: 14, color: theme.color.muted, marginTop: 2 },
   section: {
     backgroundColor: theme.color.surfaceSecondary,

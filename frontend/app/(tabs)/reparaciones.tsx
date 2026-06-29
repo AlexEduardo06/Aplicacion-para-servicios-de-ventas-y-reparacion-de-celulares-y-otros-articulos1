@@ -123,7 +123,10 @@ export default function ReparacionesScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <Text style={styles.title}>Reparaciones</Text>
+          <View>
+            <Text style={styles.brand} testID="brand-name">The Family Solutions</Text>
+            <Text style={styles.title}>Reparaciones</Text>
+          </View>
           <Pressable onPress={openNew} style={styles.addBtn} testID="btn-add-repair">
             <Ionicons name="add" size={22} color="#fff" />
           </Pressable>
@@ -288,6 +291,7 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { fontSize: 28, fontWeight: "700", color: theme.color.onSurface },
+  brand: { fontSize: 12, fontWeight: "800", color: theme.color.brandPrimary, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 2 },
   addBtn: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: theme.color.brandPrimary,

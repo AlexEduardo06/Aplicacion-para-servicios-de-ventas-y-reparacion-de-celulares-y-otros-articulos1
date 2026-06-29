@@ -101,6 +101,7 @@ export default function CajaScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
+        <Text style={styles.brand} testID="brand-name">The Family Solutions</Text>
         <Text style={styles.title} testID="screen-title">Caja del día</Text>
         <Text style={styles.subtitle}>
           {new Date().toLocaleDateString("es-DO", {
@@ -330,6 +331,7 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.md,
   },
   title: { fontSize: 28, fontWeight: "700", color: theme.color.onSurface },
+  brand: { fontSize: 12, fontWeight: "800", color: theme.color.brandPrimary, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 2 },
   subtitle: { fontSize: 14, color: theme.color.muted, marginTop: 2, textTransform: "capitalize" },
   scroll: { paddingBottom: 32 },
   balanceCard: {

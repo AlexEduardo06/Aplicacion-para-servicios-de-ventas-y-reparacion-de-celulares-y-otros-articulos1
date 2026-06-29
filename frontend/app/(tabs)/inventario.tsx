@@ -37,7 +37,12 @@ export default function InventarioScreen() {
   const [filter, setFilter] = useState<PhoneCondition | "todos">("todos");
 
   const sheetRef = useRef<BottomSheet>(null);
+  const sellSheetRef = useRef<BottomSheet>(null);
   const [editing, setEditing] = useState<Phone | null>(null);
+  const [selling, setSelling] = useState<Phone | null>(null);
+  const [sellPrice, setSellPrice] = useState("");
+  const [sellNote, setSellNote] = useState("");
+  const [sellingBusy, setSellingBusy] = useState(false);
   const [form, setForm] = useState({
     brand: "",
     model: "",
@@ -112,6 +117,30 @@ export default function InventarioScreen() {
     sheetRef.current?.expand();
   };
 
+  const openSell = (p: Phone) => {
+    setSelling(p);
+    setSellPrice(String(p.sell_price || ""));
+    setSellNote("");
+    sellSheetRef.current?.expand();
+  };
+
+  const confirmSell = async () => {
+    if (!selling) return;
+    const price = parseFloat(sellPrice || "0");
+    if (!price || price <= 0) return;
+    setSellingBusy(true);
+    try {
+      await api.sellPhone(selling.id, price, sellNote.trim() || undefined);
+      sellSheetRef.current?.close();
+      setSelling(null);
+      load();
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setSellingBusy(false);
+    }
+  };
+
   const pickImage = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return;
@@ -170,7 +199,10 @@ export default function InventarioScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <Text style={styles.title}>Inventario</Text>
+          <View>
+            <Text style={styles.brand} testID="brand-name">The Family Solutions</Text>
+            <Text style={styles.title}>Inventario</Text>
+          </View>
           <Pressable onPress={openAdd} style={styles.addBtn} testID="btn-add-phone">
             <Ionicons name="add" size={22} color="#fff" />
           </Pressable>
@@ -259,6 +291,16 @@ export default function InventarioScreen() {
               </View>
               <View style={{ alignItems: "flex-end" }}>
                 <Text style={styles.price}>{formatCurrency(item.sell_price)}</Text>
+                {item.status === "disponible" && item.stock > 0 ? (
+                  <Pressable
+                    onPress={() => openSell(item)}
+                    style={styles.sellBtn}
+                    testID={`phone-sell-${item.id}`}
+                  >
+                    <Ionicons name="cash-outline" size={14} color="#fff" />
+                    <Text style={styles.sellBtnText}>Vender</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable onPress={() => remove(item.id)} hitSlop={8} testID={`phone-delete-${item.id}`}>
                   <Ionicons name="trash-outline" size={16} color={theme.color.muted} style={{ marginTop: 8 }} />
                 </Pressable>
@@ -362,6 +404,80 @@ export default function InventarioScreen() {
           </KeyboardAvoidingView>
         </BottomSheetView>
       </BottomSheet>
+
+      {/* Sell Phone Sheet */}
+      <BottomSheet
+        ref={sellSheetRef}
+        index={-1}
+        enablePanDownToClose
+        snapPoints={["55%"]}
+        backdropComponent={(props) => (
+          <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />
+        )}
+        backgroundStyle={{ backgroundColor: theme.color.surfaceSecondary }}
+      >
+        <BottomSheetView style={styles.sheetContent}>
+          {selling && (
+            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
+              <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+                <Text style={styles.sheetTitle}>Vender Equipo</Text>
+                <View style={styles.sellSummary}>
+                  <View style={[styles.phoneImage, { width: 56, height: 56 }]}>
+                    {selling.photo ? (
+                      <RNImage source={{ uri: selling.photo }} style={{ width: "100%", height: "100%", borderRadius: 12 }} />
+                    ) : (
+                      <Ionicons name="phone-portrait" size={24} color={theme.color.muted} />
+                    )}
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.cardTitle}>{selling.brand} {selling.model}</Text>
+                    <Text style={styles.cardSubtitle}>Stock actual: {selling.stock}</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.label}>Precio de venta (RD$)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={sellPrice}
+                  onChangeText={setSellPrice}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                  placeholderTextColor={theme.color.muted}
+                  testID="input-sell-amount"
+                />
+
+                <Text style={styles.label}>Nota (opcional)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={sellNote}
+                  onChangeText={setSellNote}
+                  placeholder="Cliente, método de pago, etc."
+                  placeholderTextColor={theme.color.muted}
+                  testID="input-sell-note"
+                />
+
+                <View style={styles.sellInfoBox}>
+                  <Ionicons name="information-circle" size={18} color={theme.color.brandPrimary} />
+                  <Text style={styles.sellInfoText}>
+                    Se descontará 1 del stock y se creará un ingreso automático en la caja.
+                  </Text>
+                </View>
+
+                <Pressable
+                  onPress={confirmSell}
+                  disabled={sellingBusy}
+                  style={[styles.submitBtn, sellingBusy && { opacity: 0.6 }]}
+                  testID="btn-confirm-sell"
+                >
+                  <Text style={styles.submitBtnText}>
+                    {sellingBusy ? "Procesando..." : "Confirmar Venta"}
+                  </Text>
+                </Pressable>
+              </BottomSheetScrollView>
+            </KeyboardAvoidingView>
+          )}
+        </BottomSheetView>
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -380,6 +496,7 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm, backgroundColor: theme.color.surface },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   title: { fontSize: 28, fontWeight: "700", color: theme.color.onSurface },
+  brand: { fontSize: 12, fontWeight: "800", color: theme.color.brandPrimary, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 2 },
   addBtn: {
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: theme.color.brandPrimary,
@@ -424,6 +541,26 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 11, fontWeight: "700" },
   stockText: { fontSize: 12, color: theme.color.muted, fontWeight: "500" },
   price: { fontSize: 15, fontWeight: "800", color: theme.color.brandPrimary },
+  sellBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: theme.color.brandPrimary,
+    paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: theme.radius.pill, marginTop: 6,
+  },
+  sellBtnText: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  sellSummary: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: theme.color.brandTertiary,
+    padding: theme.spacing.md, borderRadius: theme.radius.md,
+    marginBottom: theme.spacing.sm,
+  },
+  sellInfoBox: {
+    flexDirection: "row", alignItems: "flex-start", gap: 8,
+    backgroundColor: theme.color.brandTertiary,
+    padding: theme.spacing.md, borderRadius: theme.radius.md,
+    marginTop: theme.spacing.lg,
+  },
+  sellInfoText: { flex: 1, fontSize: 12, color: theme.color.onBrandTertiary, lineHeight: 17 },
   sheetContent: { flex: 1, paddingHorizontal: theme.spacing.lg },
   sheetTitle: { fontSize: 20, fontWeight: "700", color: theme.color.onSurface, marginBottom: theme.spacing.md, marginTop: 4 },
   photoPicker: {
