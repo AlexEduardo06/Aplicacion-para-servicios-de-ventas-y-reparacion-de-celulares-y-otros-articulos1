@@ -77,6 +77,14 @@ export const api = {
     request<{ days: number; ingresos: number; egresos: number; balance: number }>(
       `/summary/range?days=${days}`
     ),
+  summaryByCategory: (days: number) =>
+    request<{
+      days: number;
+      ingresos: { category: string; amount: number; percent: number }[];
+      egresos: { category: string; amount: number; percent: number }[];
+      total_ingresos: number;
+      total_egresos: number;
+    }>(`/summary/by-category?days=${days}`),
 
   // Phones
   listPhones: () => request<Phone[]>("/phones"),

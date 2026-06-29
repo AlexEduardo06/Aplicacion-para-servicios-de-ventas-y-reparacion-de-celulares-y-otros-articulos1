@@ -190,6 +190,46 @@ async def summary_range(days: int = 7):
     }
 
 
+@api_router.get("/summary/by-category")
+async def summary_by_category(days: int = 30):
+    end_dt = datetime.now(timezone.utc)
+    start_dt = end_dt - timedelta(days=days)
+    cursor = db.transactions.find(
+        {"date": {"$gte": start_dt.isoformat()}}, {"_id": 0}
+    )
+    ingresos: dict[str, float] = {}
+    egresos: dict[str, float] = {}
+    total_in = 0.0
+    total_out = 0.0
+    async for tx in cursor:
+        bucket = ingresos if tx["type"] == "ingreso" else egresos
+        bucket[tx["category"]] = bucket.get(tx["category"], 0.0) + tx["amount"]
+        if tx["type"] == "ingreso":
+            total_in += tx["amount"]
+        else:
+            total_out += tx["amount"]
+
+    def to_list(d: dict[str, float], total: float):
+        items = [
+            {
+                "category": k,
+                "amount": round(v, 2),
+                "percent": round((v / total * 100) if total > 0 else 0, 1),
+            }
+            for k, v in d.items()
+        ]
+        items.sort(key=lambda x: x["amount"], reverse=True)
+        return items
+
+    return {
+        "days": days,
+        "ingresos": to_list(ingresos, total_in),
+        "egresos": to_list(egresos, total_out),
+        "total_ingresos": round(total_in, 2),
+        "total_egresos": round(total_out, 2),
+    }
+
+
 # ---- Phones ----
 @api_router.post("/phones", response_model=Phone)
 async def create_phone(input: PhoneCreate):
