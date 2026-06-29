@@ -12,6 +12,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { theme } from "@/src/lib/theme";
 import { api, formatCurrency } from "@/src/lib/api";
+import { shareFullReport } from "@/src/lib/receipt";
+import { storage } from "@/src/utils/storage";
+
+const REMINDER_KEY = "settings.repair_ready_alert_days";
 
 interface RangeReport {
   ingresos: number;
@@ -83,6 +87,36 @@ export default function MasScreen() {
   const [topPhones, setTopPhones] = useState<PhoneRow[]>([]);
   const [counts, setCounts] = useState({ phones: 0, available: 0, sold: 0, repairs: 0, active: 0, delivered: 0 });
   const [loading, setLoading] = useState(true);
+  const [thresholdStr, setThresholdStr] = useState("3");
+
+  useEffect(() => {
+    (async () => {
+      const v = await storage.getItem<number>(REMINDER_KEY, 3);
+      setThresholdStr(String(v ?? 3));
+    })();
+  }, []);
+
+  const saveThreshold = async (val: string) => {
+    setThresholdStr(val);
+    const n = parseInt(val || "3");
+    if (!isNaN(n) && n > 0) {
+      await storage.setItem(REMINDER_KEY, n);
+    }
+  };
+
+  const exportPdf = async () => {
+    if (!report || !byCat) return;
+    await shareFullReport({
+      rangeLabel: range?.label || "",
+      totals: { ingresos: report.ingresos, egresos: report.egresos, balance: report.balance },
+      ingresosCat: byCat.ingresos,
+      egresosCat: byCat.egresos,
+      topPhones: topPhones,
+      topClients: topClients,
+      inventory: { phones: counts.phones, available: counts.available, sold: counts.sold },
+      repairs: { total: counts.repairs, active: counts.active, delivered: counts.delivered },
+    });
+  };
 
   const range = useMemo(() => {
     if (customMode) {
@@ -291,6 +325,32 @@ export default function MasScreen() {
               <Stat label="Activas" value={String(counts.active)} color={theme.color.warning} />
               <Stat label="Entregadas" value={String(counts.delivered)} color={theme.color.success} />
             </Section>
+
+            <Section title="Ajustes" testID="report-settings">
+              <View style={styles.settingRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.settingLabel}>Avisar si una reparación está &quot;Lista&quot; por más de</Text>
+                  <Text style={styles.settingSub}>Se muestra un aviso en la lista de reparaciones</Text>
+                </View>
+                <TextInput
+                  style={styles.thresholdInput}
+                  value={thresholdStr}
+                  onChangeText={saveThreshold}
+                  keyboardType="number-pad"
+                  testID="input-threshold-days"
+                />
+                <Text style={styles.settingUnit}>días</Text>
+              </View>
+            </Section>
+
+            <Pressable
+              onPress={exportPdf}
+              style={({ pressed }) => [styles.exportBtn, pressed && { opacity: 0.85 }]}
+              testID="btn-export-pdf"
+            >
+              <Ionicons name="document-text-outline" size={20} color="#fff" />
+              <Text style={styles.exportBtnText}>Exportar Reporte PDF</Text>
+            </Pressable>
           </View>
         )}
       </ScrollView>
@@ -454,4 +514,25 @@ const styles = StyleSheet.create({
   rankTitle: { fontSize: 14, fontWeight: "700", color: theme.color.onSurface },
   rankSubtitle: { fontSize: 12, color: theme.color.muted, marginTop: 2 },
   rankAmount: { fontSize: 14, fontWeight: "800", color: theme.color.brandPrimary },
+  settingRow: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    paddingTop: 6,
+  },
+  settingLabel: { fontSize: 13, fontWeight: "600", color: theme.color.onSurface },
+  settingSub: { fontSize: 11, color: theme.color.muted, marginTop: 2 },
+  settingUnit: { fontSize: 13, color: theme.color.muted, fontWeight: "500" },
+  thresholdInput: {
+    width: 56, height: 40, borderRadius: 8,
+    backgroundColor: theme.color.surfaceTertiary,
+    textAlign: "center",
+    fontSize: 16, fontWeight: "700", color: theme.color.onSurface,
+    borderWidth: 1, borderColor: theme.color.border,
+  },
+  exportBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    backgroundColor: theme.color.brandPrimary,
+    paddingVertical: 16, borderRadius: theme.radius.md,
+    marginTop: theme.spacing.md, marginBottom: theme.spacing.lg,
+  },
+  exportBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });

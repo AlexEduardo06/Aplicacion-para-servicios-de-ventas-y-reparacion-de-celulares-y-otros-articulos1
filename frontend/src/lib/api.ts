@@ -18,6 +18,11 @@ export type PhoneCondition = "nuevo" | "usado" | "reacondicionado";
 export type PhoneStatus = "disponible" | "vendido";
 export type RepairStatus = "recibido" | "en_progreso" | "listo" | "entregado";
 
+export interface RepairPhoto {
+  type: "antes" | "despues";
+  data: string; // base64 data URI
+}
+
 export interface Transaction {
   id: string;
   type: TxType;
@@ -54,7 +59,9 @@ export interface Repair {
   cost: number;
   status: RepairStatus;
   notes?: string;
+  photos?: RepairPhoto[];
   created_at: string;
+  listo_at?: string | null;
   delivered_at?: string | null;
 }
 
@@ -141,4 +148,11 @@ export function formatDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+export function daysSince(iso: string | null | undefined): number {
+  if (!iso) return 0;
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return 0;
+  return Math.floor((Date.now() - t) / 86400000);
 }

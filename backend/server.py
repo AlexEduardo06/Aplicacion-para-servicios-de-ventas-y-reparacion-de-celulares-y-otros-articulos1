@@ -84,6 +84,11 @@ class PhoneUpdate(BaseModel):
 
 
 # Repairs
+class RepairPhoto(BaseModel):
+    type: Literal["antes", "despues"] = "antes"
+    data: str  # base64 data URI
+
+
 class RepairCreate(BaseModel):
     client_name: str
     client_phone: Optional[str] = ""
@@ -92,12 +97,15 @@ class RepairCreate(BaseModel):
     cost: float = 0
     status: Literal["recibido", "en_progreso", "listo", "entregado"] = "recibido"
     notes: Optional[str] = ""
+    photos: Optional[List[RepairPhoto]] = None
 
 
 class Repair(RepairCreate):
     id: str
     created_at: str
+    listo_at: Optional[str] = None
     delivered_at: Optional[str] = None
+    photos: List[RepairPhoto] = []
 
 
 class RepairUpdate(BaseModel):
@@ -108,6 +116,7 @@ class RepairUpdate(BaseModel):
     cost: Optional[float] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    photos: Optional[List[RepairPhoto]] = None
 
 
 # ------------------- ROUTES -------------------
@@ -395,6 +404,10 @@ async def create_repair(input: RepairCreate):
     data["id"] = str(uuid.uuid4())
     data["created_at"] = now_iso()
     data["delivered_at"] = None
+    data["listo_at"] = None
+    data["photos"] = data.get("photos") or []
+    if data.get("status") == "listo":
+        data["listo_at"] = data["created_at"]
     await db.repairs.insert_one(data)
     data.pop("_id", None)
     return Repair(**data)
@@ -403,7 +416,12 @@ async def create_repair(input: RepairCreate):
 @api_router.get("/repairs", response_model=List[Repair])
 async def list_repairs():
     cursor = db.repairs.find({}, {"_id": 0}).sort("created_at", -1)
-    return [Repair(**doc) async for doc in cursor]
+    out = []
+    async for doc in cursor:
+        doc.setdefault("photos", [])
+        doc.setdefault("listo_at", None)
+        out.append(Repair(**doc))
+    return out
 
 
 @api_router.put("/repairs/{repair_id}", response_model=Repair)
@@ -413,11 +431,17 @@ async def update_repair(repair_id: str, input: RepairUpdate):
         raise HTTPException(400, "Nothing to update")
     if update.get("status") == "entregado":
         update["delivered_at"] = now_iso()
+    if update.get("status") == "listo":
+        existing = await db.repairs.find_one({"id": repair_id}, {"_id": 0})
+        if existing and not existing.get("listo_at"):
+            update["listo_at"] = now_iso()
     res = await db.repairs.find_one_and_update(
         {"id": repair_id}, {"$set": update}, return_document=True, projection={"_id": 0}
     )
     if not res:
         raise HTTPException(404, "Repair not found")
+    res.setdefault("photos", [])
+    res.setdefault("listo_at", None)
     return Repair(**res)
 
 

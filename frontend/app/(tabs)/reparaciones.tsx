@@ -9,6 +9,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image as RNImage,
+  ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,9 +19,13 @@ import BottomSheet, {
   BottomSheetView,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
+import * as ImagePicker from "expo-image-picker";
 import { theme } from "@/src/lib/theme";
-import { api, formatCurrency, formatDate, Repair, RepairStatus } from "@/src/lib/api";
+import { api, daysSince, formatCurrency, formatDate, Repair, RepairPhoto, RepairStatus } from "@/src/lib/api";
 import { shareRepairReceipt } from "@/src/lib/receipt";
+import { storage } from "@/src/utils/storage";
+
+const REMINDER_KEY = "settings.repair_ready_alert_days";
 
 const STATUS_META: Record<RepairStatus, { label: string; bg: string; fg: string }> = {
   recibido: { label: "Recibido", bg: "#E5E7EB", fg: "#374151" },
@@ -34,10 +40,12 @@ export default function ReparacionesScreen() {
   const [repairs, setRepairs] = useState<Repair[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"activas" | "entregadas">("activas");
+  const [threshold, setThreshold] = useState(3);
 
   const sheetRef = useRef<BottomSheet>(null);
   const editSheetRef = useRef<BottomSheet>(null);
   const [editing, setEditing] = useState<Repair | null>(null);
+  const [photos, setPhotos] = useState<RepairPhoto[]>([]);
   const [form, setForm] = useState({
     client_name: "",
     client_phone: "",
@@ -50,8 +58,12 @@ export default function ReparacionesScreen() {
 
   const load = useCallback(async () => {
     try {
-      const list = await api.listRepairs();
+      const [list, t] = await Promise.all([
+        api.listRepairs(),
+        storage.getItem<number>(REMINDER_KEY, 3),
+      ]);
       setRepairs(list);
+      if (t && t > 0) setThreshold(t);
     } catch (e) {
       console.warn(e);
     } finally {
@@ -66,6 +78,18 @@ export default function ReparacionesScreen() {
       tab === "activas" ? r.status !== "entregado" : r.status === "entregado"
     );
   }, [repairs, tab]);
+
+  const overdueIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of repairs) {
+      if (r.status === "listo" && r.listo_at && daysSince(r.listo_at) >= threshold) {
+        set.add(r.id);
+      }
+    }
+    return set;
+  }, [repairs, threshold]);
+
+  const overdueCount = overdueIds.size;
 
   const openNew = () => {
     setForm({ client_name: "", client_phone: "", device: "", fault: "", cost: "", notes: "" });
@@ -96,6 +120,7 @@ export default function ReparacionesScreen() {
 
   const openEdit = (r: Repair) => {
     setEditing(r);
+    setPhotos(r.photos || []);
     editSheetRef.current?.expand();
   };
 
@@ -103,6 +128,45 @@ export default function ReparacionesScreen() {
     if (!editing) return;
     try {
       const updated = await api.updateRepair(editing.id, { status });
+      setEditing(updated);
+      load();
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
+  const addPhoto = async (type: "antes" | "despues") => {
+    if (!editing) return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      base64: true,
+      quality: 0.4,
+      allowsEditing: false,
+    });
+    if (res.canceled || !res.assets[0]?.base64) return;
+    const newPhoto: RepairPhoto = {
+      type,
+      data: `data:image/jpeg;base64,${res.assets[0].base64}`,
+    };
+    const updatedPhotos = [...photos, newPhoto];
+    setPhotos(updatedPhotos);
+    try {
+      const updated = await api.updateRepair(editing.id, { photos: updatedPhotos });
+      setEditing(updated);
+      load();
+    } catch (e) {
+      console.warn(e);
+    }
+  };
+
+  const removePhoto = async (idx: number) => {
+    if (!editing) return;
+    const updatedPhotos = photos.filter((_, i) => i !== idx);
+    setPhotos(updatedPhotos);
+    try {
+      const updated = await api.updateRepair(editing.id, { photos: updatedPhotos });
       setEditing(updated);
       load();
     } catch (e) {
@@ -150,6 +214,15 @@ export default function ReparacionesScreen() {
             );
           })}
         </View>
+
+        {overdueCount > 0 && tab === "activas" && (
+          <View style={styles.reminderBanner} testID="reminder-banner">
+            <Ionicons name="alert-circle" size={20} color={theme.color.warning} />
+            <Text style={styles.reminderText}>
+              <Text style={{ fontWeight: "800" }}>{overdueCount}</Text> reparación{overdueCount > 1 ? "es" : ""} lista{overdueCount > 1 ? "s" : ""} sin retirar (más de {threshold} día{threshold > 1 ? "s" : ""})
+            </Text>
+          </View>
+        )}
       </View>
 
       {loading ? (
@@ -169,8 +242,14 @@ export default function ReparacionesScreen() {
           contentContainerStyle={{ padding: theme.spacing.lg, paddingBottom: 32 }}
           renderItem={({ item }) => {
             const meta = STATUS_META[item.status];
+            const isOverdue = overdueIds.has(item.id);
+            const overdueDays = isOverdue && item.listo_at ? daysSince(item.listo_at) : 0;
             return (
-              <Pressable onPress={() => openEdit(item)} style={styles.card} testID={`repair-card-${item.id}`}>
+              <Pressable
+                onPress={() => openEdit(item)}
+                style={[styles.card, isOverdue && styles.cardOverdue]}
+                testID={`repair-card-${item.id}`}
+              >
                 <View style={styles.cardHeader}>
                   <Text style={styles.cardTitle}>{item.client_name}</Text>
                   <View style={[styles.badge, { backgroundColor: meta.bg }]}>
@@ -179,6 +258,14 @@ export default function ReparacionesScreen() {
                 </View>
                 <Text style={styles.cardDevice}>{item.device}</Text>
                 <Text style={styles.cardFault} numberOfLines={2}>{item.fault}</Text>
+                {isOverdue && (
+                  <View style={styles.overdueChip} testID={`overdue-${item.id}`}>
+                    <Ionicons name="time-outline" size={14} color={theme.color.warning} />
+                    <Text style={styles.overdueChipText}>
+                      Lista hace {overdueDays} día{overdueDays > 1 ? "s" : ""} sin retirar
+                    </Text>
+                  </View>
+                )}
                 <View style={styles.cardFooter}>
                   <Text style={styles.cardMeta}>{formatDate(item.created_at)}</Text>
                   <Text style={styles.cardCost}>{formatCurrency(item.cost)}</Text>
@@ -236,7 +323,7 @@ export default function ReparacionesScreen() {
         ref={editSheetRef}
         index={-1}
         enablePanDownToClose
-        snapPoints={["60%"]}
+        snapPoints={["90%"]}
         backdropComponent={(props) => (
           <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />
         )}
@@ -244,11 +331,53 @@ export default function ReparacionesScreen() {
       >
         <BottomSheetView style={styles.sheetContent}>
           {editing && (
-            <BottomSheetScrollView>
+            <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 40 }}>
               <Text style={styles.sheetTitle}>{editing.client_name}</Text>
               <Text style={styles.cardDevice}>{editing.device}</Text>
               <Text style={[styles.cardFault, { marginBottom: 8 }]}>{editing.fault}</Text>
               <Text style={[styles.cardCost, { marginBottom: theme.spacing.lg }]}>{formatCurrency(editing.cost)}</Text>
+
+              {(["antes", "despues"] as const).map((type) => {
+                const list = photos
+                  .map((p, idx) => ({ p, idx }))
+                  .filter((x) => x.p.type === type);
+                return (
+                  <View key={type} style={{ marginBottom: theme.spacing.md }}>
+                    <View style={styles.photoSectionHeader}>
+                      <Text style={styles.label}>
+                        Fotos {type === "antes" ? "antes" : "después"}
+                      </Text>
+                      <Pressable
+                        onPress={() => addPhoto(type)}
+                        style={styles.photoAddBtn}
+                        testID={`btn-add-photo-${type}`}
+                      >
+                        <Ionicons name="add" size={16} color={theme.color.brandPrimary} />
+                        <Text style={styles.photoAddBtnText}>Agregar</Text>
+                      </Pressable>
+                    </View>
+                    {list.length === 0 ? (
+                      <Text style={styles.photoEmpty}>Sin fotos</Text>
+                    ) : (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                        {list.map(({ p, idx }) => (
+                          <View key={idx} style={styles.photoThumb} testID={`photo-${type}-${idx}`}>
+                            <RNImage source={{ uri: p.data }} style={{ width: "100%", height: "100%", borderRadius: 8 }} />
+                            <Pressable
+                              onPress={() => removePhoto(idx)}
+                              style={styles.photoRemove}
+                              hitSlop={6}
+                              testID={`photo-remove-${type}-${idx}`}
+                            >
+                              <Ionicons name="close" size={14} color="#fff" />
+                            </Pressable>
+                          </View>
+                        ))}
+                      </ScrollView>
+                    )}
+                  </View>
+                );
+              })}
 
               <Text style={styles.label}>Actualizar Estado</Text>
               <View style={{ gap: 8 }}>
@@ -314,6 +443,46 @@ const styles = StyleSheet.create({
   segmentBtnActive: { backgroundColor: theme.color.surfaceSecondary, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   segmentText: { fontSize: 14, fontWeight: "600", color: theme.color.muted },
   segmentTextActive: { color: theme.color.onSurface },
+  reminderBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderRadius: theme.radius.md,
+    marginTop: theme.spacing.md,
+    borderWidth: 1, borderColor: "#FDE68A",
+  },
+  reminderText: { flex: 1, fontSize: 13, color: "#92400E", lineHeight: 18 },
+  cardOverdue: { borderColor: theme.color.warning, borderWidth: 2 },
+  overdueChip: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    alignSelf: "flex-start",
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: theme.radius.pill,
+    marginTop: 8,
+  },
+  overdueChipText: { fontSize: 11, fontWeight: "700", color: "#92400E" },
+  photoSectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  photoAddBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    backgroundColor: theme.color.brandTertiary,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: theme.radius.pill,
+  },
+  photoAddBtnText: { fontSize: 12, fontWeight: "700", color: theme.color.brandPrimary },
+  photoEmpty: { fontSize: 12, color: theme.color.muted, marginTop: 6, fontStyle: "italic" },
+  photoThumb: {
+    width: 96, height: 96, borderRadius: 8,
+    backgroundColor: theme.color.surfaceTertiary,
+    overflow: "hidden", flexShrink: 0,
+    marginTop: 6,
+  },
+  photoRemove: {
+    position: "absolute", top: 4, right: 4,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center", justifyContent: "center",
+  },
   empty: { alignItems: "center", paddingVertical: 64 },
   emptyText: { fontSize: 15, color: theme.color.onSurface, fontWeight: "600", marginTop: 10 },
   emptySubtext: { fontSize: 13, color: theme.color.muted, marginTop: 4 },
