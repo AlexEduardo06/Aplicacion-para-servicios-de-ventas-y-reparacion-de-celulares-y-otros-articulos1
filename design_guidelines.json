@@ -1,0 +1,161 @@
+{
+  "app_name": "Gestión Móvil",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A highly readable, trustworthy, and practical command center for a phone shop owner, emphasizing clear financial data and structured inventory.",
+  "color": {
+    "surface": "#F9FAFB",
+    "onSurface": "#111827",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#111827",
+    "surfaceTertiary": "#F3F4F6",
+    "onSurfaceTertiary": "#374151",
+    "surfaceInverse": "#111827",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#047857",
+    "brandPrimary": "#047857",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#D1FAE5",
+    "onBrandSecondary": "#065F46",
+    "brandTertiary": "#ECFDF5",
+    "onBrandTertiary": "#047857",
+    "success": "#16A34A",
+    "onSuccess": "#FFFFFF",
+    "warning": "#D97706",
+    "onWarning": "#FFFFFF",
+    "error": "#DC2626",
+    "onError": "#FFFFFF",
+    "border": "#E5E7EB",
+    "borderStrong": "#D1D5DB",
+    "divider": "#F3F4F6"
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Geist",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical breathing room. Cards must not touch screen edges (md margin). Thumb zone rules apply for primary CTAs.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": 1,
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use on the bottom tab bar",
+      "Use on sticky headers over scrolling lists (like the inventory)",
+      "Use on Floating Action Buttons over a brandTertiary tint"
+    ],
+    "dont's": [
+      "Never blur list rows, standard cards, or text input fields",
+      "Do not use heavily blurred backgrounds for body content"
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Inicio/Caja",
+      "purpose": "Dashboard showing today's financial summary and quick actions.",
+      "states": {
+        "loading": "Centered spinner over the metrics.",
+        "empty": "No transactions today. Show a 'Registrar Venta' or 'Registrar Gasto' CTA.",
+        "error": "Failed to load metrics. Show retry button."
+      },
+      "layout": "Use a prominent KPI Dashboard at the top: Large text for 'Balance de Hoy' (RD$). Underneath, a 2-column grid for 'Ingresos' and 'Egresos'. Below that, a list of 'Transacciones Recientes' with color-coded amounts (Green for income, Red for expense) and clear action-oriented labels. A floating action button (FAB) or sticky primary CTA for 'Nueva Transacción'."
+    },
+    {
+      "name": "Inventario",
+      "purpose": "Manage phone stock with photos, status, and IMEI.",
+      "states": {
+        "loading": "Skeleton rows of cards.",
+        "empty": "Illustration of an empty minimal box with 'No hay equipos en inventario. Toca + para agregar.'",
+        "error": "Failed to load inventory. Retry button."
+      },
+      "layout": "Prominent sticky search bar at the top (Search by IMEI/Model). Below it, a horizontally scrolling filter row (Nuevo, Usado, Reparado). The main list uses a Card layout: Left side image of the phone (expo-image), Right side bold Model name, regular text for IMEI, and a right-aligned bold price. Include color-coded status badges (e.g., green for 'Disponible', red for 'Vendido'). Sticky Add button at the bottom."
+    },
+    {
+      "name": "Reparaciones",
+      "purpose": "Track repair service statuses and workflow.",
+      "states": {
+        "loading": "Skeleton cards.",
+        "empty": "Illustration of repair tools with text 'No hay reparaciones activas.'",
+        "error": "Error loading repairs."
+      },
+      "layout": "Segmented control at the top to filter status: 'Activas' vs 'Entregadas'. List of cards for each job. Each card must show: Client name, Device Model, Fault (Issue), Cost, and a distinct timeline/progress indicator badge (Recibido, En Progreso, Listo, Entregado) with color-coding (Yellow for progress, Green for ready). Tapping a card opens a bottom sheet to change the status."
+    },
+    {
+      "name": "Más/Reportes",
+      "purpose": "Settings, detailed reports, and history.",
+      "states": {
+        "loading": "Centered spinner.",
+        "empty": "N/A",
+        "error": "Error loading settings."
+      },
+      "layout": "Standard iOS settings grouped list layout. Tinted icon containers for each row. Sections for 'Reporte Mensual', 'Historial de Caja', 'Ajustes de Tienda'."
+    }
+  ],
+  "images": {
+    "empty_inventory": {
+      "url": "https://images.unsplash.com/photo-1617360547704-3da8b5363369?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNTl8MHwxfHNlYXJjaHwyfHxlbXB0eSUyMGJveCUyMG1pbmltYWx8ZW58MHx8fHwxNzgyNjkzNzg4fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "White minimal empty box on a table"
+    },
+    "empty_repairs": {
+      "url": "https://images.unsplash.com/photo-1588515603140-81bd9f7d1db0?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Njd8MHwxfHNlYXJjaHwyfHxwaG9uZSUyMHJlcGFpciUyMHRvb2xzJTIwdGFibGV8ZW58MHx8fHwxNzgyNjkzNzg4fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Disassembled smartphone parts on a table"
+    },
+    "demo_phone_1": {
+      "url": "https://images.pexels.com/photos/34018284/pexels-photo-34018284.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "Hand holding a sleek, silver smartphone"
+    },
+    "demo_phone_2": {
+      "url": "https://images.unsplash.com/photo-1695822822491-d92cee704368?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwxfHxpcGhvbmUlMjAxNSUyMHBybyUyMG1heHxlbnwwfHx8fDE3ODI2OTM3ODh8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "A person holding an iPhone in front of a brick wall"
+    }
+  },
+  "haptics": {
+    "tab_change": "light",
+    "primary_button_press": "medium",
+    "status_change": "success",
+    "delete_item": "warning"
+  },
+  "instructions_to_main_agent": [
+    "Follow the '1 iOS-Native Clean' personality rigorously: ensure generous padding, clean backgrounds, and avoid unnecessary drop shadows. Let the data speak.",
+    "BANNED COLORS: Strictly do not use any shade of blue, purple, indigo, navy, or violet for any UI elements, text, or accents. The primary brand color is Emerald Green (#047857), which symbolizes finance and trustworthiness. Use this color consistently for CTAs, selected tabs, and important highlights.",
+    "Implement the 'Inicio/Caja' screen with large, highly legible typography for the cash balance. Ensure currency amounts use 'Plus Jakarta Sans' to stand out.",
+    "On the 'Inventario' screen, implement the card layout using 'demo_phone' images from the JSON to make it realistic. Ensure a sticky search bar and horizontal filter row (Nuevo, Usado, Reparado) at the top.",
+    "On the 'Reparaciones' screen, cards must have clear, color-coded badges for status (e.g., Recibido: Gray, En Progreso: Yellow/Warning, Listo: BrandPrimary, Entregado: Success). Use bottom sheets for editing the repair status.",
+    "Do not use emojis anywhere in the system UI.",
+    "Include a scrim layer (linear gradient) on images if text needs to overlay them, though for this app, inventory images will likely be side-by-side with text rather than backgrounds.",
+    "Apply iOS native blur using 'expo-glass-effect' for the bottom tab bar and the sticky headers when scrolling."
+  ]
+}
