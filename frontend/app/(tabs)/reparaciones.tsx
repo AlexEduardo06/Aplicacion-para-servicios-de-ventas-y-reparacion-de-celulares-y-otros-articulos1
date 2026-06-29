@@ -14,7 +14,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetView,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 import * as ImagePicker from "expo-image-picker";
@@ -336,14 +335,16 @@ export default function ReparacionesScreen() {
         index={-1}
         enablePanDownToClose
         snapPoints={["90%"]}
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
         backdropComponent={(props) => (
           <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />
         )}
         backgroundStyle={{ backgroundColor: theme.color.surfaceSecondary }}
       >
-        <BottomSheetView style={styles.sheetContent}>
-          {editing && (
-            <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        {editing && (
+          <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: 60 }}>
               <Text style={styles.sheetTitle}>{editing.client_name}</Text>
               <Text style={styles.cardDevice}>{editing.device}</Text>
               <Text style={[styles.cardFault, { marginBottom: 8 }]}>{editing.fault}</Text>
@@ -425,9 +426,8 @@ export default function ReparacionesScreen() {
                 <Ionicons name="trash-outline" size={18} color={theme.color.error} />
                 <Text style={styles.deleteBtnText}>Eliminar reparación</Text>
               </Pressable>
-            </BottomSheetScrollView>
-          )}
-        </BottomSheetView>
+          </BottomSheetScrollView>
+        )}
       </BottomSheet>
     </SafeAreaView>
   );
