@@ -11,6 +11,8 @@ import {
   Platform,
   ActivityIndicator,
   Image as RNImage,
+  Modal,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,6 +22,7 @@ import BottomSheet, {
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 import * as ImagePicker from "expo-image-picker";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { AppTheme } from "@/src/lib/theme";
 import { useTheme } from "@/src/lib/theme-context";
 import { api, formatCurrency, Phone, PhoneCondition, PhoneStatus } from "@/src/lib/api";
@@ -47,6 +50,32 @@ export default function InventarioScreen() {
   const [sellPrice, setSellPrice] = useState("");
   const [sellNote, setSellNote] = useState("");
   const [sellingBusy, setSellingBusy] = useState(false);
+
+  const [scanning, setScanning] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+  const scanLockRef = useRef(false);
+
+  const openScanner = async () => {
+    if (!permission?.granted) {
+      const res = await requestPermission();
+      if (!res.granted) {
+        if (permission && !permission.canAskAgain) {
+          Linking.openSettings();
+        }
+        return;
+      }
+    }
+    scanLockRef.current = false;
+    setScanning(true);
+  };
+
+  const onBarcodeScanned = ({ data }: { data: string }) => {
+    if (scanLockRef.current) return;
+    scanLockRef.current = true;
+    const cleaned = data.trim().replace(/[^0-9A-Za-z-]/g, "");
+    setForm((f) => ({ ...f, imei: cleaned }));
+    setScanning(false);
+  };
   const [form, setForm] = useState({
     brand: "",
     model: "",
@@ -349,7 +378,23 @@ export default function InventarioScreen() {
               <View style={{ flexDirection: "row", gap: 12 }}>
                 <View style={{ flex: 1 }}>
                   <Row label="IMEI">
-                    <TextInput style={styles.input} value={form.imei} onChangeText={(v) => setForm((f) => ({ ...f, imei: v }))} placeholder="Opcional" placeholderTextColor={theme.color.muted} testID="input-imei" />
+                    <View style={styles.imeiRow}>
+                      <TextInput
+                        style={[styles.input, { flex: 1 }]}
+                        value={form.imei}
+                        onChangeText={(v) => setForm((f) => ({ ...f, imei: v }))}
+                        placeholder="Opcional"
+                        placeholderTextColor={theme.color.muted}
+                        testID="input-imei"
+                      />
+                      <Pressable
+                        onPress={openScanner}
+                        style={styles.scanBtn}
+                        testID="btn-scan-imei"
+                      >
+                        <Ionicons name="barcode-outline" size={20} color={theme.color.brandPrimary} />
+                      </Pressable>
+                    </View>
                   </Row>
                 </View>
                 <View style={{ flex: 1 }}>
@@ -482,11 +527,41 @@ export default function InventarioScreen() {
           )}
         </BottomSheetView>
       </BottomSheet>
+
+      <Modal visible={scanning} animationType="slide" onRequestClose={() => setScanning(false)} statusBarTranslucent>
+        <View style={styles.scannerRoot}>
+          {scanning && (
+            <CameraView
+              style={StyleSheet.absoluteFill}
+              facing="back"
+              onBarcodeScanned={onBarcodeScanned}
+              barcodeScannerSettings={{
+                barcodeTypes: ["ean13", "ean8", "code128", "code39", "code93", "upc_a", "upc_e", "qr", "pdf417", "itf14"],
+              }}
+            />
+          )}
+          <SafeAreaView style={StyleSheet.absoluteFill} edges={["top", "bottom"]}>
+            <View style={styles.scannerTop}>
+              <Pressable onPress={() => setScanning(false)} style={styles.scannerClose} testID="btn-close-scanner">
+                <Ionicons name="close" size={26} color="#fff" />
+              </Pressable>
+              <Text style={styles.scannerTitle}>Escanear IMEI / Código</Text>
+              <View style={{ width: 40 }} />
+            </View>
+            <View style={styles.scannerCenter}>
+              <View style={styles.scannerFrame} />
+              <Text style={styles.scannerHint}>Apunta al código de barras del celular o de la caja</Text>
+            </View>
+          </SafeAreaView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  const { theme } = useTheme();
+  const styles = useMemo(() => buildStyles(theme), [theme]);
   return (
     <View style={{ marginTop: 12 }}>
       <Text style={styles.label}>{label}</Text>
@@ -565,6 +640,36 @@ const buildStyles = (theme: AppTheme) => StyleSheet.create({
     marginTop: theme.spacing.lg,
   },
   sellInfoText: { flex: 1, fontSize: 12, color: theme.color.onBrandTertiary, lineHeight: 17 },
+  imeiRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  scanBtn: {
+    width: 44, height: 44, borderRadius: theme.radius.md,
+    backgroundColor: theme.color.brandTertiary,
+    borderWidth: 1, borderColor: theme.color.brandPrimary,
+    alignItems: "center", justifyContent: "center",
+  },
+  scannerRoot: { flex: 1, backgroundColor: "#000" },
+  scannerTop: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  scannerClose: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center", justifyContent: "center",
+  },
+  scannerTitle: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  scannerCenter: { flex: 1, alignItems: "center", justifyContent: "center" },
+  scannerFrame: {
+    width: 280, height: 180,
+    borderWidth: 3, borderColor: theme.color.brandPrimary,
+    borderRadius: 16, backgroundColor: "transparent",
+  },
+  scannerHint: {
+    color: "#fff", fontSize: 14, fontWeight: "600", textAlign: "center",
+    marginTop: theme.spacing.lg, paddingHorizontal: 24,
+    textShadowColor: "rgba(0,0,0,0.6)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
+  },
   sheetContent: { flex: 1, paddingHorizontal: theme.spacing.lg },
   sheetTitle: { fontSize: 20, fontWeight: "700", color: theme.color.onSurface, marginBottom: theme.spacing.md, marginTop: 4 },
   photoPicker: {
