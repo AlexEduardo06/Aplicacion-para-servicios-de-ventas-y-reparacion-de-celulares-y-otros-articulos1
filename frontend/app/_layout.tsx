@@ -20,6 +20,7 @@ function Shell() {
       <StatusBar barStyle={mode === "dark" ? "light-content" : "dark-content"} backgroundColor={theme.color.surface} />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.color.surface } }}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="search" options={{ presentation: "modal", animation: "slide_from_bottom" }} />
       </Stack>
     </>
   );

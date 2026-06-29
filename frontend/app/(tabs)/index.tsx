@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetView,
@@ -29,6 +30,7 @@ const CATEGORIES_OUT = ["compra", "gasto", "otro"];
 export default function CajaScreen() {
   const { theme } = useTheme();
   const styles = useMemo(() => buildStyles(theme), [theme]);
+  const router = useRouter();
 
   const [summary, setSummary] = useState<DailySummary>({
     ingresos: 0,
@@ -106,15 +108,25 @@ export default function CajaScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
-        <Text style={styles.brand} testID="brand-name">The Family Solutions</Text>
-        <Text style={styles.title} testID="screen-title">Caja del día</Text>
-        <Text style={styles.subtitle}>
-          {new Date().toLocaleDateString("es-DO", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-          })}
-        </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.brand} testID="brand-name">The Family Solutions</Text>
+          <Text style={styles.title} testID="screen-title">Caja del día</Text>
+          <Text style={styles.subtitle}>
+            {new Date().toLocaleDateString("es-DO", {
+              weekday: "long",
+              day: "numeric",
+              month: "long",
+            })}
+          </Text>
+        </View>
+        <Pressable
+          onPress={() => router.push("/search" as never)}
+          style={styles.headerSearchBtn}
+          hitSlop={8}
+          testID="btn-global-search"
+        >
+          <Ionicons name="search" size={22} color={theme.color.onSurface} />
+        </Pressable>
       </View>
 
       <ScrollView
@@ -339,9 +351,17 @@ function capitalize(s: string) {
 const buildStyles = (theme: AppTheme) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.color.surface },
   header: {
+    flexDirection: "row",
+    alignItems: "flex-end",
     paddingHorizontal: theme.spacing.lg,
     paddingTop: theme.spacing.sm,
     paddingBottom: theme.spacing.md,
+  },
+  headerSearchBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: theme.color.surfaceSecondary,
+    borderWidth: 1, borderColor: theme.color.border,
+    alignItems: "center", justifyContent: "center",
   },
   title: { fontSize: 28, fontWeight: "700", color: theme.color.onSurface },
   brand: { fontSize: 12, fontWeight: "800", color: theme.color.brandPrimary, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 2 },

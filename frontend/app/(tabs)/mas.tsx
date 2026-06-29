@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,12 +9,16 @@ import {
   TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetView,
+} from "@gorhom/bottom-sheet";
 import { Ionicons } from "@expo/vector-icons";
 import { AppTheme } from "@/src/lib/theme";
 import { useTheme } from "@/src/lib/theme-context";
 import { api, formatCurrency } from "@/src/lib/api";
 import { shareFullReport } from "@/src/lib/receipt";
-import { shareBackupJson } from "@/src/lib/backup";
+import { shareBackupJson, pickAndRestoreJson } from "@/src/lib/backup";
 import { storage } from "@/src/utils/storage";
 
 const REMINDER_KEY = "settings.repair_ready_alert_days";
@@ -92,6 +96,32 @@ export default function MasScreen() {
   const [counts, setCounts] = useState({ phones: 0, available: 0, sold: 0, repairs: 0, active: 0, delivered: 0 });
   const [loading, setLoading] = useState(true);
   const [thresholdStr, setThresholdStr] = useState("3");
+  const restoreSheetRef = useRef<BottomSheet>(null);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreStatus, setRestoreStatus] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
+
+  const runRestore = useCallback(async (mode: "replace" | "merge") => {
+    setRestoreBusy(true);
+    setRestoreStatus(null);
+    try {
+      const result = await pickAndRestoreJson(mode);
+      if (!result) {
+        setRestoreBusy(false);
+        return;
+      }
+      const i = result.inserted;
+      setRestoreStatus({
+        kind: "ok",
+        msg: `Restaurado (${result.mode}): ${i.transactions} transacciones, ${i.phones} celulares, ${i.repairs} reparaciones`,
+      });
+      load();
+      restoreSheetRef.current?.close();
+    } catch (e) {
+      setRestoreStatus({ kind: "err", msg: e instanceof Error ? e.message : "Error al restaurar" });
+    } finally {
+      setRestoreBusy(false);
+    }
+  }, [load]);
 
   useEffect(() => {
     (async () => {
@@ -378,9 +408,97 @@ export default function MasScreen() {
               <Ionicons name="download-outline" size={20} color={theme.color.brandPrimary} />
               <Text style={styles.backupBtnText}>Exportar Respaldo JSON</Text>
             </Pressable>
+
+            <Pressable
+              onPress={() => {
+                setRestoreStatus(null);
+                restoreSheetRef.current?.expand();
+              }}
+              style={({ pressed }) => [styles.backupBtn, pressed && { opacity: 0.85 }]}
+              testID="btn-restore-json"
+            >
+              <Ionicons name="cloud-upload-outline" size={20} color={theme.color.brandPrimary} />
+              <Text style={styles.backupBtnText}>Importar Respaldo JSON</Text>
+            </Pressable>
+
+            {restoreStatus && (
+              <View
+                style={[
+                  styles.statusBox,
+                  restoreStatus.kind === "ok" ? styles.statusOk : styles.statusErr,
+                ]}
+                testID="restore-status"
+              >
+                <Ionicons
+                  name={restoreStatus.kind === "ok" ? "checkmark-circle" : "alert-circle"}
+                  size={18}
+                  color={restoreStatus.kind === "ok" ? theme.color.brandPrimary : theme.color.error}
+                />
+                <Text
+                  style={[
+                    styles.statusText,
+                    { color: restoreStatus.kind === "ok" ? theme.color.brandPrimary : theme.color.error },
+                  ]}
+                >
+                  {restoreStatus.msg}
+                </Text>
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
+
+      <BottomSheet
+        ref={restoreSheetRef}
+        index={-1}
+        enablePanDownToClose
+        snapPoints={["55%"]}
+        backdropComponent={(props) => (
+          <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />
+        )}
+        backgroundStyle={{ backgroundColor: theme.color.surfaceSecondary }}
+      >
+        <BottomSheetView style={{ padding: theme.spacing.lg }}>
+          <Text style={styles.restoreTitle}>Importar Respaldo</Text>
+          <Text style={styles.restoreText}>
+            Selecciona un archivo <Text style={{ fontWeight: "700" }}>.json</Text> previamente exportado y elige cómo combinar los datos.
+          </Text>
+
+          <Pressable
+            onPress={() => runRestore("replace")}
+            disabled={restoreBusy}
+            style={[styles.restoreDanger, restoreBusy && { opacity: 0.6 }]}
+            testID="btn-restore-replace"
+          >
+            <Ionicons name="warning-outline" size={18} color={theme.color.onError} />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.restoreDangerTitle}>Reemplazar todo</Text>
+              <Text style={styles.restoreDangerSub}>Borra todos los datos actuales antes de importar</Text>
+            </View>
+          </Pressable>
+
+          <Pressable
+            onPress={() => runRestore("merge")}
+            disabled={restoreBusy}
+            style={[styles.restoreMerge, restoreBusy && { opacity: 0.6 }]}
+            testID="btn-restore-merge"
+          >
+            <Ionicons name="git-merge-outline" size={18} color={theme.color.brandPrimary} />
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.restoreMergeTitle}>Combinar (mantener todo)</Text>
+              <Text style={styles.restoreMergeSub}>Agrega los datos del archivo a los actuales (sobreescribe por ID)</Text>
+            </View>
+          </Pressable>
+
+          <Pressable
+            onPress={() => restoreSheetRef.current?.close()}
+            style={styles.restoreCancel}
+            testID="btn-restore-cancel"
+          >
+            <Text style={styles.restoreCancelText}>Cancelar</Text>
+          </Pressable>
+        </BottomSheetView>
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -591,4 +709,39 @@ const buildStyles = (theme: AppTheme) => StyleSheet.create({
     shadowColor: "#000", shadowOpacity: 0.15, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2,
   },
   toggleKnobOn: { transform: [{ translateX: 20 }], backgroundColor: theme.color.onBrandPrimary },
+  statusBox: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 12, paddingVertical: 10,
+    borderRadius: theme.radius.md,
+    marginBottom: theme.spacing.md,
+    borderWidth: 1,
+  },
+  statusOk: { backgroundColor: theme.color.brandTertiary, borderColor: theme.color.brandPrimary },
+  statusErr: { backgroundColor: theme.color.errorSoft, borderColor: theme.color.error },
+  statusText: { flex: 1, fontSize: 13, fontWeight: "600" },
+  restoreTitle: { fontSize: 20, fontWeight: "700", color: theme.color.onSurface, marginBottom: 8 },
+  restoreText: { fontSize: 13, color: theme.color.muted, marginBottom: theme.spacing.lg, lineHeight: 18 },
+  restoreDanger: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: theme.color.error,
+    paddingHorizontal: 14, paddingVertical: 14,
+    borderRadius: theme.radius.md,
+    marginBottom: theme.spacing.sm,
+  },
+  restoreDangerTitle: { color: theme.color.onError, fontWeight: "700", fontSize: 15 },
+  restoreDangerSub: { color: theme.color.onError, fontSize: 11, opacity: 0.9, marginTop: 2 },
+  restoreMerge: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: theme.color.brandTertiary,
+    paddingHorizontal: 14, paddingVertical: 14,
+    borderRadius: theme.radius.md,
+    marginBottom: theme.spacing.sm,
+    borderWidth: 1, borderColor: theme.color.brandPrimary,
+  },
+  restoreMergeTitle: { color: theme.color.brandPrimary, fontWeight: "700", fontSize: 15 },
+  restoreMergeSub: { color: theme.color.onBrandTertiary, fontSize: 11, marginTop: 2 },
+  restoreCancel: {
+    paddingVertical: 12, alignItems: "center", marginTop: 4,
+  },
+  restoreCancelText: { fontSize: 14, fontWeight: "600", color: theme.color.muted },
 });

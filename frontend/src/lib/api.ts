@@ -115,6 +115,15 @@ export const api = {
     phones: Phone[];
     repairs: Repair[];
   }>("/backup"),
+  restore: (data: { transactions?: Transaction[]; phones?: Phone[]; repairs?: Repair[]; mode?: "replace" | "merge" }) =>
+    request<{ ok: boolean; mode: string; inserted: { transactions: number; phones: number; repairs: number } }>(
+      "/restore",
+      { method: "POST", body: JSON.stringify(data) }
+    ),
+  search: (q: string) =>
+    request<{ transactions: Transaction[]; phones: Phone[]; repairs: Repair[] }>(
+      `/search?q=${encodeURIComponent(q)}`
+    ),
 
   // Phones
   listPhones: () => request<Phone[]>("/phones"),

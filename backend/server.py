@@ -481,6 +481,87 @@ async def backup_all():
     }
 
 
+class RestoreInput(BaseModel):
+    transactions: List[dict] = []
+    phones: List[dict] = []
+    repairs: List[dict] = []
+    mode: Literal["replace", "merge"] = "replace"
+
+
+@api_router.post("/restore")
+async def restore_backup(payload: RestoreInput):
+    if payload.mode == "replace":
+        await db.transactions.delete_many({})
+        await db.phones.delete_many({})
+        await db.repairs.delete_many({})
+
+    inserted = {"transactions": 0, "phones": 0, "repairs": 0}
+    if payload.transactions:
+        for t in payload.transactions:
+            t.pop("_id", None)
+        if payload.mode == "merge":
+            ids = [t["id"] for t in payload.transactions if "id" in t]
+            if ids:
+                await db.transactions.delete_many({"id": {"$in": ids}})
+        await db.transactions.insert_many(payload.transactions)
+        inserted["transactions"] = len(payload.transactions)
+    if payload.phones:
+        for p in payload.phones:
+            p.pop("_id", None)
+        if payload.mode == "merge":
+            ids = [p["id"] for p in payload.phones if "id" in p]
+            if ids:
+                await db.phones.delete_many({"id": {"$in": ids}})
+        await db.phones.insert_many(payload.phones)
+        inserted["phones"] = len(payload.phones)
+    if payload.repairs:
+        for r in payload.repairs:
+            r.pop("_id", None)
+            r.setdefault("photos", [])
+            r.setdefault("listo_at", None)
+        if payload.mode == "merge":
+            ids = [r["id"] for r in payload.repairs if "id" in r]
+            if ids:
+                await db.repairs.delete_many({"id": {"$in": ids}})
+        await db.repairs.insert_many(payload.repairs)
+        inserted["repairs"] = len(payload.repairs)
+
+    return {"ok": True, "mode": payload.mode, "inserted": inserted}
+
+
+@api_router.get("/search")
+async def search_all(q: str, limit: int = 20):
+    qn = q.strip()
+    if not qn:
+        return {"transactions": [], "phones": [], "repairs": []}
+    rx = {"$regex": qn, "$options": "i"}
+
+    transactions = []
+    async for d in db.transactions.find(
+        {"$or": [{"description": rx}, {"category": rx}, {"type": rx}]},
+        {"_id": 0},
+    ).sort("date", -1).limit(limit):
+        transactions.append(d)
+
+    phones = []
+    async for d in db.phones.find(
+        {"$or": [{"brand": rx}, {"model": rx}, {"imei": rx}, {"color": rx}]},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(limit):
+        phones.append(d)
+
+    repairs = []
+    async for d in db.repairs.find(
+        {"$or": [{"client_name": rx}, {"client_phone": rx}, {"device": rx}, {"fault": rx}, {"notes": rx}]},
+        {"_id": 0},
+    ).sort("created_at", -1).limit(limit):
+        d.setdefault("photos", [])
+        d.setdefault("listo_at", None)
+        repairs.append(d)
+
+    return {"transactions": transactions, "phones": phones, "repairs": repairs}
+
+
 app.include_router(api_router)
 
 app.add_middleware(
