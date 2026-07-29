@@ -1,6 +1,7 @@
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-import { Platform, Linking } from "react-native";
+import * as FileSystem from "expo-file-system/legacy";
+import { Platform } from "react-native";
 import { formatCurrency, formatDate, Transaction, Repair } from "./api";
 
 const COMPANY = "THE FAMILY SOLUTIONS";
@@ -50,24 +51,57 @@ function row(label: string, value: string): string {
   return `<tr><td class="label">${label}</td><td class="value">${value}</td></tr>`;
 }
 
-async function generateAndShare(html: string, filename: string) {
-  const { uri } = await Print.printToFileAsync({ html, base64: false });
+async function generateAndShare(html: string, filename: string): Promise<void> {
   if (Platform.OS === "web") {
-    // On web, open the PDF in a new tab
-    Linking.openURL(uri);
+    // Web fallback: open a printable window with the HTML content
+    try {
+      const w = window.open("", "_blank");
+      if (w) {
+        w.document.write(html);
+        w.document.close();
+        setTimeout(() => {
+          try { w.focus(); w.print(); } catch { /* noop */ }
+        }, 300);
+        return;
+      }
+    } catch { /* fall through */ }
+    // Fallback to blob download
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename.replace(/\.pdf$/, ".html");
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
     return;
   }
-  const can = await Sharing.isAvailableAsync();
-  if (can) {
-    await Sharing.shareAsync(uri, {
-      mimeType: "application/pdf",
-      dialogTitle: `Compartir ${filename}`,
-      UTI: "com.adobe.pdf",
-    });
+
+  // Native: print to file then share
+  const printed = await Print.printToFileAsync({ html, base64: false });
+  let finalUri = printed.uri;
+
+  // Copy to a nicer filename in the cache dir so the share dialog shows the right name
+  try {
+    const target = `${FileSystem.cacheDirectory}${filename}`;
+    await FileSystem.copyAsync({ from: printed.uri, to: target });
+    finalUri = target;
+  } catch { /* keep original uri */ }
+
+  const canShare = await Sharing.isAvailableAsync();
+  if (!canShare) {
+    throw new Error("Compartir no está disponible en este dispositivo.");
   }
+
+  await Sharing.shareAsync(finalUri, {
+    mimeType: "application/pdf",
+    dialogTitle: `Compartir ${filename}`,
+    UTI: "com.adobe.pdf",
+  });
 }
 
-export async function shareTransactionReceipt(tx: Transaction) {
+export async function shareTransactionReceipt(tx: Transaction): Promise<void> {
   const isSale = tx.type === "ingreso";
   const title = isSale ? "Recibo de Venta" : "Comprobante de Egreso";
   const body =
@@ -80,7 +114,7 @@ export async function shareTransactionReceipt(tx: Transaction) {
   await generateAndShare(html, `recibo-${tx.id.slice(0, 8)}.pdf`);
 }
 
-export async function shareRepairReceipt(r: Repair) {
+export async function shareRepairReceipt(r: Repair): Promise<void> {
   const body =
     row("Cliente", r.client_name) +
     (r.client_phone ? row("Teléfono", r.client_phone) : "") +
@@ -121,7 +155,7 @@ function catLabel(c: string) {
   return m[c] || c;
 }
 
-export async function shareFullReport(data: FullReportInput) {
+export async function shareFullReport(data: FullReportInput): Promise<void> {
   const totalRows =
     row("Ingresos", `<span style="color:#047857">${formatCurrency(data.totals.ingresos)}</span>`) +
     row("Egresos", `<span style="color:#DC2626">${formatCurrency(data.totals.egresos)}</span>`) +

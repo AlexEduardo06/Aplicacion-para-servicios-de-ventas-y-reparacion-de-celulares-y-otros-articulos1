@@ -117,16 +117,23 @@ export default function MasScreen() {
 
   const exportPdf = async () => {
     if (!report || !byCat) return;
-    await shareFullReport({
-      rangeLabel: range?.label || "",
-      totals: { ingresos: report.ingresos, egresos: report.egresos, balance: report.balance },
-      ingresosCat: byCat.ingresos,
-      egresosCat: byCat.egresos,
-      topPhones: topPhones,
-      topClients: topClients,
-      inventory: { phones: counts.phones, available: counts.available, sold: counts.sold },
-      repairs: { total: counts.repairs, active: counts.active, delivered: counts.delivered },
-    });
+    setRestoreStatus(null);
+    try {
+      await shareFullReport({
+        rangeLabel: range?.label || "",
+        totals: { ingresos: report.ingresos, egresos: report.egresos, balance: report.balance },
+        ingresosCat: byCat.ingresos,
+        egresosCat: byCat.egresos,
+        topPhones: topPhones,
+        topClients: topClients,
+        inventory: { phones: counts.phones, available: counts.available, sold: counts.sold },
+        repairs: { total: counts.repairs, active: counts.active, delivered: counts.delivered },
+      });
+      setRestoreStatus({ kind: "ok", msg: "PDF generado. Elige una app para compartirlo." });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "No se pudo generar el PDF";
+      setRestoreStatus({ kind: "err", msg: `Error al exportar PDF: ${msg}` });
+    }
   };
 
   const range = useMemo(() => {

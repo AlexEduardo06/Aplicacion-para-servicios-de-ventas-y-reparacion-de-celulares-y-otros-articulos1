@@ -1,0 +1,34 @@
+{
+  "summary": "Frontend-only retest of the PDF export bug in the Más tab of The Family Solutions app. BUG FIXED: 'Exportar Reporte PDF' (testID='btn-export-pdf') now works correctly on the Expo web preview. On tap: (1) a new browser window/popup opens containing the printable HTML report (verified: popup content includes 'Reporte de Operaciones' / 'THE FAMILY SOLUTIONS' markers — `popup has_report_content: True`), and (2) the inline status box (testID='restore-status') renders the green success message: 'PDF generado. Elige una app para compartirlo.'. No silent failure. No console pageerror. No TDZ error on Más tab (previous fix still holding). Previous bottom-sheet scroll fixes for Nueva Reparación/Nuevo Equipo were confirmed in iteration_2 and were not re-exercised in depth this round (out-of-scope) — the Más screen and its buttons render and the app remains navigable across all 4 tabs (Caja/Inventario/Reparaciones/Más).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Más > Reportes", "issues": ["Data range on current date (Jan 2026) shows RD$ 0.00 for all totals because seed transactions are dated July 2025 (visible in Caja screen). Not part of this bug, but the report will be empty until the user records recent transactions or extends the range. Consider defaulting to a wider preset or 'Todos' when 30-day range is empty."]}
+    ],
+    "react_native_issues": [
+      {"component": "Console warnings", "issue": "'props.pointerEvents is deprecated. Use style.pointerEvents' and '\"shadow*\" style props are deprecated. Use \"boxShadow\"' — cosmetic but noisy. Also two React 19 warnings: 'Accessing element.ref was removed in React 19. ref is now a regular prop.' likely from a third-party lib. Reference: browser console during initial render."},
+      {"component": "expo-image-picker MediaTypeOptions", "issue": "Still using deprecated ImagePicker.MediaTypeOptions.Images in /app/frontend/app/(tabs)/inventario.tsx and /app/frontend/app/(tabs)/reparaciones.tsx. Should migrate to the string 'images'. Carried over from iteration_2 — not fixed."}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_3.json", "/app/test_reports/iteration_2.json"],
+  "action_items": [
+    "PDF export bug is CONFIRMED FIXED. No further action required for the reported bug.",
+    "(Optional) Suppress React 19 element.ref warnings once the offending third-party lib (likely @gorhom/bottom-sheet or reanimated) publishes a compatible release.",
+    "(Optional) Migrate expo-image-picker MediaTypeOptions.Images → 'images' (still pending from iteration_2).",
+    "(Optional UX) When the selected range has no transactions, show a hint under the empty summary suggesting to widen the range instead of RD$ 0.00 across every card."
+  ],
+  "critical_code_review_comments": [
+    "receipt.ts generateAndShare has proper platform branching: web opens window + print with a blob-download HTML fallback (returns before reaching native code path); native uses Print.printToFileAsync + FileSystem.copyAsync + Sharing.isAvailableAsync check that throws an explicit error, which is now surfaced in the UI by exportPdf's try/catch. Good defensive pattern.",
+    "mas.tsx exportPdf correctly resets restoreStatus to null before the call and uses the same statusBox (testID='restore-status') to display both success and error, matching the request's spec.",
+    "Minor: In generateAndShare web path, the popup.print() is fired 300ms after document.write. On very slow devices the fonts might not have loaded. Consider hooking to popup.onload or using data URLs for a more deterministic print trigger, but the current implementation works in practice."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "N/A (frontend-only request)", "frontend": "100% on requested checks — btn-export-pdf tap opens a new window with report HTML, restore-status shows the exact success text, no silent failure, no TDZ regression on Más tab" },
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "PDF export fix on Expo web relies on window.open + print. Playwright must attach a `context.on('page', ...)` listener BEFORE clicking btn-export-pdf to catch the popup; also attach `page.on('download', ...)` to cover the blob-download fallback path. The success message 'PDF generado. Elige una app para compartirlo.' appears inside the element with testID='restore-status'. To force the fallback path, block popups (context.grant_permissions([])) or override window.open to return null before clicking.",
+  "rca_of_issue": "Original bug: On tap, exportPdf called shareFullReport → generateAndShare, which unconditionally used the native expo-print + expo-sharing path. On Expo web preview, Print.printToFileAsync either does nothing or throws, and Sharing.shareAsync is unavailable — the error was swallowed and no UI feedback was shown, producing a silent failure. Fix (verified working): (1) generateAndShare now branches on Platform.OS==='web' and opens a print window (with HTML blob download fallback); (2) exportPdf wraps the call in try/catch and writes success/error to the same statusBox (testID='restore-status'). Reproduction is confirmed: window.open popup fires and status box displays 'PDF generado. Elige una app para compartirlo.'"
+}

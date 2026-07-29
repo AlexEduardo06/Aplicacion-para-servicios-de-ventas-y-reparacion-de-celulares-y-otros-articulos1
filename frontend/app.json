@@ -13,7 +13,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "Escanea códigos IMEI para registrar celulares",
         "NSPhotoLibraryUsageDescription": "Agregar fotos de celulares y reparaciones"
-      }
+      },
+      "bundleIdentifier": "com.emergent.phonerepairmgmt.hf0hwo"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +22,11 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "permissions": ["android.permission.CAMERA", "android.permission.READ_EXTERNAL_STORAGE"]
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ],
+      "package": "com.emergent.phonerepairmgmt.hf0hwo"
     },
     "web": {
       "bundler": "metro",
