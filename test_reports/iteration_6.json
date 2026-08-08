@@ -1,0 +1,41 @@
+{
+  "summary": "End-to-end testing of the new 'Entregar y cobrar' + 'Vender con deuda' flows. Backend: 13/13 pytest cases pass in test_deliver_sell.py covering: (a) deliver_repair with paid<cost creates ingreso tx (category=reparacion, related_repair_id) AND debt (source=reparacion) with remainder; (b) deliver_repair with paid=cost creates only tx, no debt; (c) deliver_repair with paid=0 creates ONLY debt (no zero-amount transaction) and status→entregado; (d) overpay is capped to cost; (e) negative paid → 400; (f) sell_phone partial pay creates both tx and debt with client_name/client_phone from body; (g) sell_phone full pay creates only tx; (h) missing client_name falls back to 'Cliente sin nombre'; (i) default paid=price; (j) sold-out returns 400; (k) paying the auto-created debt via /debts/{id}/pay correctly sums into caja today ingresos. Regression suite test_debts.py + test_api.py continue to pass. Frontend (Playwright mobile 390x844): repair edit sheet → tap status-option-entregado does NOT immediately change status but opens the deliver sheet with input-deliver-paid (prefilled with cost), chip-deliver-method-{efectivo,transferencia,tarjeta}, btn-confirm-deliver. Confirmed with paid=1500 on cost=2000 → status becomes entregado AND a debt of RD$ 500 appears in Deudas with 'Pendiente' badge under the client name. In Inventario, sell sheet input-sell-paid is prefilled with sell price (verified '6000'), sell-debt-box is HIDDEN when paid=price and APPEARS when paid<price (verified debt box with client-name & phone inputs). Confirming sell with paid=4000/price=6000 + client 'TEST_PW_SELL_*' created a debt of RD$ 2,000 visible in Deudas list. Cross-module integration verified: created debts appear under 'Pendientes' and can be paid via 'Registrar pago', pumping ingreso into caja summary/today.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "@gorhom/bottom-sheet", "issue": "React 19 warning 'Accessing element.ref was removed' still emitted from library — non-blocking, upstream. Reference: frontend/app/(tabs)/reparaciones.tsx and inventario.tsx"},
+      {"component": "RN Web style props", "issue": "Deprecated 'shadow*' and 'textShadow*' style prop warnings on web (should migrate to boxShadow/textShadow). Non-blocking."},
+      {"component": "RN Web props.pointerEvents", "issue": "'props.pointerEvents is deprecated. Use style.pointerEvents' warning appears in console. Non-blocking."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_deliver_sell.py",
+    "/app/backend/tests/test_debts.py",
+    "/app/backend/tests/test_api.py",
+    "/app/test_reports/pytest/pytest_deliver_sell.xml"
+  ],
+  "action_items": [
+    "No blocking action items. Optional: after Sell/Deliver confirm, the deliver/sell bottom sheet should auto-close and briefly toast success (currently the sheet closes but no explicit success toast was observed — verify UX intent).",
+    "Optional cosmetic: migrate deprecated 'shadow*' and 'textShadow*' style props and 'props.pointerEvents' to modern React Native Web equivalents to silence dev warnings.",
+    "Optional (from prev iter still open): /api/restore does not restore the debts collection even though /api/backup exports it."
+  ],
+  "critical_code_review_comments": [
+    "server.py deliver_repair (L493-560) and sell_phone (L415-485) correctly gate transaction creation on paid>0 (so paid=0 does not insert a zero-amount tx) and gate debt creation on pending>0. Category and related_* fields are properly set for both endpoints.",
+    "_debt_hydrate correctly recomputes balance from original_amount - paid_amount at hydrate time; no stale computed field.",
+    "Frontend testIDs are complete and match spec: status-option-entregado, input-deliver-paid, chip-deliver-method-{efectivo|transferencia|tarjeta}, btn-confirm-deliver in reparaciones.tsx; input-sell-paid, sell-debt-box, input-sell-client, input-sell-client-phone in inventario.tsx.",
+    "reparaciones.tsx (669 lines) is approaching the 700-line soft limit; consider extracting the deliver bottom sheet into its own component if further features are added.",
+    "MongoDB _id is consistently excluded from all response docs via {'_id': 0} projection or explicit .pop('_id', None)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_deliver_sell.py (new)"
+  ],
+  "success_rate": { "backend": "100% (13/13 new + prior regression pass)", "frontend": "100% on primary flows tested" },
+  "seed_data_creation": "Created and cleaned up during pytest: 8 TEST_ repairs, 5 TEST_ phones, associated debts + transactions. Playwright created TEST_PW_* repair(1)/phone(1)/sell(1) → all deleted post-test via API cleanup script (verified: no TEST_PW_* debts, repairs, phones or their linked transactions remain in DB).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "New endpoints: POST /api/repairs/{id}/deliver {paid, method}. POST /api/phones/{id}/sell now accepts {price, paid, method, client_name, client_phone, description}. Both return {transaction, debt, paid, pending, ...}. Deliver: paid=0 → NO tx, only debt; paid=cost → only tx; paid<cost → both. Sell: same pattern. Debts created carry source='reparacion'|'venta', related_repair_id / related_phone_id. Paying such debts via /api/debts/{id}/pay creates a linked ingreso tx in caja. Baseline DB after cleanup: 3 debts (Juan soto/Reparación pending 500, and prior Maria Lopez venta parcial 5500). Key frontend testIDs on deliver sheet: input-deliver-paid, chip-deliver-method-<m>, btn-confirm-deliver. On sell sheet: input-sell-amount (price), input-sell-paid, sell-debt-box, input-sell-client, input-sell-client-phone, btn-confirm-sell.",
+  "rca_of_issue": "N/A — no defects found. All 8 requested feature acceptance criteria satisfied."
+}

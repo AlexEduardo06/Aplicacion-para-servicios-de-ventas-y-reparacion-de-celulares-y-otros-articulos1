@@ -91,7 +91,7 @@ export default function CajaScreen() {
     try {
       if (txType === "ingreso" && category === "venta" && linkedPhoneId) {
         // Route through sell endpoint so inventory stock/status updates automatically
-        await api.sellPhone(linkedPhoneId, n, description);
+        await api.sellPhone(linkedPhoneId, { price: n, paid: n, description });
       } else {
         await api.createTransaction({
           type: txType,

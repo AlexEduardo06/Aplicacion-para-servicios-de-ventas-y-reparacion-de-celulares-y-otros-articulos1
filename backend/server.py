@@ -405,6 +405,10 @@ async def delete_phone(phone_id: str):
 
 class SellPhoneInput(BaseModel):
     price: Optional[float] = None
+    paid: Optional[float] = None  # if less than price, remainder becomes a debt
+    method: Optional[str] = "efectivo"
+    client_name: Optional[str] = None
+    client_phone: Optional[str] = None
     description: Optional[str] = ""
 
 
@@ -417,6 +421,13 @@ async def sell_phone(phone_id: str, input: SellPhoneInput):
         raise HTTPException(400, "Equipo no disponible")
 
     sale_price = input.price if input.price and input.price > 0 else phone.get("sell_price", 0)
+    sale_price = float(sale_price)
+    paid = float(input.paid) if input.paid is not None else sale_price
+    if paid < 0:
+        raise HTTPException(400, "El monto pagado no puede ser negativo")
+    if paid > sale_price:
+        paid = sale_price
+    pending = round(sale_price - paid, 2)
 
     new_stock = phone.get("stock", 1) - 1
     new_status = "vendido" if new_stock <= 0 else "disponible"
@@ -426,20 +437,127 @@ async def sell_phone(phone_id: str, input: SellPhoneInput):
     )
 
     desc = input.description or f"Venta {phone['brand']} {phone['model']}"
-    tx = {
-        "id": str(uuid.uuid4()),
-        "type": "ingreso",
-        "amount": float(sale_price),
-        "category": "venta",
-        "description": desc,
-        "related_phone_id": phone_id,
-        "related_repair_id": None,
-        "date": now_iso(),
-    }
-    await db.transactions.insert_one(tx)
-    tx.pop("_id", None)
+    tx = None
+    if paid > 0:
+        tx = {
+            "id": str(uuid.uuid4()),
+            "type": "ingreso",
+            "amount": paid,
+            "category": "venta",
+            "description": desc,
+            "related_phone_id": phone_id,
+            "related_repair_id": None,
+            "date": now_iso(),
+        }
+        await db.transactions.insert_one(tx)
+        tx.pop("_id", None)
+
+    debt = None
+    if pending > 0:
+        debt_data = {
+            "id": str(uuid.uuid4()),
+            "client_name": (input.client_name or "").strip() or "Cliente sin nombre",
+            "client_phone": (input.client_phone or "").strip(),
+            "concept": f"Venta {phone['brand']} {phone['model']}",
+            "source": "venta",
+            "original_amount": pending,
+            "paid_amount": 0.0,
+            "status": "pendiente",
+            "payments": [],
+            "notes": desc,
+            "related_phone_id": phone_id,
+            "related_repair_id": None,
+            "due_date": None,
+            "created_at": now_iso(),
+        }
+        await db.debts.insert_one(debt_data)
+        debt_data.pop("_id", None)
+        debt = _debt_hydrate(dict(debt_data))
+
     updated_phone = await db.phones.find_one({"id": phone_id}, {"_id": 0})
-    return {"phone": updated_phone, "transaction": tx}
+    return {
+        "phone": updated_phone,
+        "transaction": tx,
+        "debt": debt.model_dump() if debt else None,
+        "pending": pending,
+        "paid": paid,
+        "price": sale_price,
+    }
+
+
+class DeliverRepairInput(BaseModel):
+    paid: Optional[float] = None
+    method: Optional[str] = "efectivo"
+
+
+@api_router.post("/repairs/{repair_id}/deliver")
+async def deliver_repair(repair_id: str, input: DeliverRepairInput):
+    repair = await db.repairs.find_one({"id": repair_id}, {"_id": 0})
+    if not repair:
+        raise HTTPException(404, "Repair not found")
+
+    cost = float(repair.get("cost", 0) or 0)
+    paid = float(input.paid) if input.paid is not None else cost
+    if paid < 0:
+        raise HTTPException(400, "El monto pagado no puede ser negativo")
+    if paid > cost:
+        paid = cost
+    pending = round(cost - paid, 2)
+    when = now_iso()
+
+    await db.repairs.update_one(
+        {"id": repair_id},
+        {"$set": {"status": "entregado", "delivered_at": when}},
+    )
+
+    tx = None
+    if paid > 0:
+        tx = {
+            "id": str(uuid.uuid4()),
+            "type": "ingreso",
+            "amount": paid,
+            "category": "reparacion",
+            "description": f"Reparación: {repair['client_name']} — {repair['device']}",
+            "related_phone_id": None,
+            "related_repair_id": repair_id,
+            "date": when,
+        }
+        await db.transactions.insert_one(tx)
+        tx.pop("_id", None)
+
+    debt = None
+    if pending > 0:
+        debt_data = {
+            "id": str(uuid.uuid4()),
+            "client_name": repair["client_name"],
+            "client_phone": repair.get("client_phone", "") or "",
+            "concept": f"Reparación {repair['device']}",
+            "source": "reparacion",
+            "original_amount": pending,
+            "paid_amount": 0.0,
+            "status": "pendiente",
+            "payments": [],
+            "notes": repair.get("fault", "") or "",
+            "related_phone_id": None,
+            "related_repair_id": repair_id,
+            "due_date": None,
+            "created_at": when,
+        }
+        await db.debts.insert_one(debt_data)
+        debt_data.pop("_id", None)
+        debt = _debt_hydrate(dict(debt_data))
+
+    updated_repair = await db.repairs.find_one({"id": repair_id}, {"_id": 0})
+    updated_repair.setdefault("photos", [])
+    updated_repair.setdefault("listo_at", None)
+    return {
+        "repair": Repair(**updated_repair).model_dump(),
+        "transaction": tx,
+        "debt": debt.model_dump() if debt else None,
+        "pending": pending,
+        "paid": paid,
+        "cost": cost,
+    }
 
 
 # ---- Repairs ----

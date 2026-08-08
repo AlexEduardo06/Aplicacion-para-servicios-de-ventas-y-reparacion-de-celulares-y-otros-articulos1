@@ -48,6 +48,7 @@ export default function ReparacionesScreen() {
 
   const sheetRef = useRef<BottomSheet>(null);
   const editSheetRef = useRef<BottomSheet>(null);
+  const deliverSheetRef = useRef<BottomSheet>(null);
   const [editing, setEditing] = useState<Repair | null>(null);
   const [photos, setPhotos] = useState<RepairPhoto[]>([]);
   const [form, setForm] = useState({
@@ -59,6 +60,9 @@ export default function ReparacionesScreen() {
     notes: "",
   });
   const [saving, setSaving] = useState(false);
+  const [deliverPaid, setDeliverPaid] = useState("");
+  const [deliverMethod, setDeliverMethod] = useState("efectivo");
+  const [delivering, setDelivering] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -134,12 +138,36 @@ export default function ReparacionesScreen() {
 
   const updateStatus = async (status: RepairStatus) => {
     if (!editing) return;
+    if (status === "entregado") {
+      // Intercept to collect payment & optional debt
+      setDeliverPaid(String(editing.cost || 0));
+      setDeliverMethod("efectivo");
+      deliverSheetRef.current?.expand();
+      return;
+    }
     try {
       const updated = await api.updateRepair(editing.id, { status });
       setEditing(updated);
       load();
     } catch (e) {
       console.warn(e);
+    }
+  };
+
+  const confirmDeliver = async () => {
+    if (!editing) return;
+    const paid = parseFloat(deliverPaid || "0");
+    if (paid < 0) return;
+    setDelivering(true);
+    try {
+      const res = await api.deliverRepair(editing.id, paid, deliverMethod);
+      setEditing(res.repair);
+      deliverSheetRef.current?.close();
+      load();
+    } catch (e) {
+      console.warn(e);
+    } finally {
+      setDelivering(false);
     }
   };
 
@@ -429,6 +457,88 @@ export default function ReparacionesScreen() {
           </BottomSheetScrollView>
         )}
       </BottomSheet>
+
+      {/* Deliver Repair Sheet (payment on delivery) */}
+      <BottomSheet
+        ref={deliverSheetRef}
+        index={-1}
+        enablePanDownToClose
+        snapPoints={["70%"]}
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
+        backdropComponent={(props) => (
+          <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />
+        )}
+        backgroundStyle={{ backgroundColor: theme.color.surfaceSecondary }}
+      >
+        {editing && (
+          <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: 60 }}>
+            <Text style={styles.sheetTitle}>Entregar y cobrar</Text>
+            <Text style={styles.cardDevice}>{editing.client_name} · {editing.device}</Text>
+            <Text style={[styles.cardCost, { marginBottom: theme.spacing.lg }]}>Costo: {formatCurrency(editing.cost)}</Text>
+
+            <Text style={styles.label}>Monto cobrado ahora (RD$)</Text>
+            <TextInput
+              style={styles.input}
+              value={deliverPaid}
+              onChangeText={setDeliverPaid}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              placeholderTextColor={theme.color.muted}
+              testID="input-deliver-paid"
+            />
+
+            <Text style={styles.label}>Método</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+              {["efectivo", "transferencia", "tarjeta"].map((m) => {
+                const active = m === deliverMethod;
+                return (
+                  <Pressable key={m} onPress={() => setDeliverMethod(m)} style={[styles.chip, active && styles.chipActive]} testID={`chip-deliver-method-${m}`}>
+                    <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                      {m.charAt(0).toUpperCase() + m.slice(1)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {(() => {
+              const paid = parseFloat(deliverPaid || "0");
+              const pending = Math.max(0, (editing.cost || 0) - (paid || 0));
+              if (pending <= 0) {
+                return (
+                  <View style={[styles.deliverInfoBox, { backgroundColor: theme.color.brandTertiary, borderColor: theme.color.brandPrimary }]}>
+                    <Ionicons name="checkmark-circle" size={18} color={theme.color.brandPrimary} />
+                    <Text style={[styles.deliverInfoText, { color: theme.color.brandPrimary }]}>
+                      Pago completo. Se sumará {formatCurrency(paid)} a la caja.
+                    </Text>
+                  </View>
+                );
+              }
+              return (
+                <View style={[styles.deliverInfoBox, { backgroundColor: theme.color.warningSoft, borderColor: theme.color.warningSoftBorder }]}>
+                  <Ionicons name="warning" size={18} color={theme.color.warning} />
+                  <Text style={[styles.deliverInfoText, { color: theme.color.warningSoftText }]}>
+                    Queda debiendo {formatCurrency(pending)}. Se creará automáticamente en el módulo Deudas.
+                  </Text>
+                </View>
+              );
+            })()}
+
+            <Pressable
+              onPress={confirmDeliver}
+              disabled={delivering}
+              style={[styles.submitBtn, delivering && { opacity: 0.6 }]}
+              testID="btn-confirm-deliver"
+            >
+              <Text style={styles.submitBtnText}>
+                {delivering ? "Procesando..." : "Marcar como entregada"}
+              </Text>
+            </Pressable>
+          </BottomSheetScrollView>
+        )}
+      </BottomSheet>
     </SafeAreaView>
   );
 }
@@ -540,6 +650,14 @@ const buildStyles = (theme: AppTheme) => StyleSheet.create({
     borderWidth: 1, borderColor: theme.color.error,
   },
   deleteBtnText: { color: theme.color.error, fontWeight: "700" },
+  deliverInfoBox: {
+    flexDirection: "row", alignItems: "flex-start", gap: 8,
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.md,
+    marginTop: theme.spacing.lg,
+    borderWidth: 1,
+  },
+  deliverInfoText: { flex: 1, fontSize: 13, fontWeight: "600", lineHeight: 18 },
   shareBtn: {
     flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
     marginTop: theme.spacing.xl, paddingVertical: 14,

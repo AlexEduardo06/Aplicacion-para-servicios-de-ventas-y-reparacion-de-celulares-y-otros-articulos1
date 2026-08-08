@@ -45,6 +45,9 @@ export default function InventarioScreen() {
   const [editing, setEditing] = useState<Phone | null>(null);
   const [selling, setSelling] = useState<Phone | null>(null);
   const [sellPrice, setSellPrice] = useState("");
+  const [sellPaid, setSellPaid] = useState("");
+  const [sellClient, setSellClient] = useState("");
+  const [sellClientPhone, setSellClientPhone] = useState("");
   const [sellNote, setSellNote] = useState("");
   const [sellingBusy, setSellingBusy] = useState(false);
 
@@ -150,6 +153,9 @@ export default function InventarioScreen() {
   const openSell = (p: Phone) => {
     setSelling(p);
     setSellPrice(String(p.sell_price || ""));
+    setSellPaid(String(p.sell_price || ""));
+    setSellClient("");
+    setSellClientPhone("");
     setSellNote("");
     sellSheetRef.current?.expand();
   };
@@ -158,9 +164,18 @@ export default function InventarioScreen() {
     if (!selling) return;
     const price = parseFloat(sellPrice || "0");
     if (!price || price <= 0) return;
+    const paid = parseFloat(sellPaid || "0");
+    const pending = Math.max(0, price - (paid || 0));
+    if (pending > 0 && !sellClient.trim()) return;
     setSellingBusy(true);
     try {
-      await api.sellPhone(selling.id, price, sellNote.trim() || undefined);
+      await api.sellPhone(selling.id, {
+        price,
+        paid: Number.isFinite(paid) ? paid : price,
+        description: sellNote.trim() || undefined,
+        client_name: sellClient.trim() || undefined,
+        client_phone: sellClientPhone.trim() || undefined,
+      });
       sellSheetRef.current?.close();
       setSelling(null);
       load();
@@ -489,19 +504,65 @@ export default function InventarioScreen() {
                 <TextInput
                   style={styles.input}
                   value={sellPrice}
-                  onChangeText={setSellPrice}
+                  onChangeText={(v) => { setSellPrice(v); setSellPaid(v); }}
                   keyboardType="decimal-pad"
                   placeholder="0.00"
                   placeholderTextColor={theme.color.muted}
                   testID="input-sell-amount"
                 />
 
+                <Text style={styles.label}>Monto pagado ahora (RD$)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={sellPaid}
+                  onChangeText={setSellPaid}
+                  keyboardType="decimal-pad"
+                  placeholder="Deja vacío si es a crédito"
+                  placeholderTextColor={theme.color.muted}
+                  testID="input-sell-paid"
+                />
+
+                {(() => {
+                  const price = parseFloat(sellPrice || "0");
+                  const paid = parseFloat(sellPaid || "0");
+                  const pending = Math.max(0, (price || 0) - (paid || 0));
+                  if (pending <= 0) return null;
+                  return (
+                    <View style={styles.debtBox} testID="sell-debt-box">
+                      <View style={styles.debtBoxHeader}>
+                        <Ionicons name="warning" size={16} color={theme.color.warning} />
+                        <Text style={styles.debtBoxTitle}>Queda debiendo {formatCurrency(pending)}</Text>
+                      </View>
+                      <Text style={styles.label}>Nombre del cliente *</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={sellClient}
+                        onChangeText={setSellClient}
+                        placeholder="Requerido para registrar la deuda"
+                        placeholderTextColor={theme.color.muted}
+                        testID="input-sell-client"
+                      />
+                      <Text style={styles.label}>Teléfono (opcional)</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={sellClientPhone}
+                        onChangeText={setSellClientPhone}
+                        placeholder="809-000-0000"
+                        keyboardType="phone-pad"
+                        placeholderTextColor={theme.color.muted}
+                        testID="input-sell-client-phone"
+                      />
+                      <Text style={styles.debtBoxHint}>Se creará una deuda automáticamente en el módulo Deudas.</Text>
+                    </View>
+                  );
+                })()}
+
                 <Text style={styles.label}>Nota (opcional)</Text>
                 <TextInput
                   style={styles.input}
                   value={sellNote}
                   onChangeText={setSellNote}
-                  placeholder="Cliente, método de pago, etc."
+                  placeholder="Método de pago, referencia, etc."
                   placeholderTextColor={theme.color.muted}
                   testID="input-sell-note"
                 />
@@ -509,7 +570,7 @@ export default function InventarioScreen() {
                 <View style={styles.sellInfoBox}>
                   <Ionicons name="information-circle" size={18} color={theme.color.brandPrimary} />
                   <Text style={styles.sellInfoText}>
-                    Se descontará 1 del stock y se creará un ingreso automático en la caja.
+                    Se descontará 1 del stock, se registra el pago en la caja y (si aplica) se crea la deuda.
                   </Text>
                 </View>
 
@@ -639,6 +700,16 @@ const buildStyles = (theme: AppTheme) => StyleSheet.create({
     marginTop: theme.spacing.lg,
   },
   sellInfoText: { flex: 1, fontSize: 12, color: theme.color.onBrandTertiary, lineHeight: 17 },
+  debtBox: {
+    marginTop: theme.spacing.md,
+    padding: theme.spacing.md,
+    backgroundColor: theme.color.warningSoft,
+    borderRadius: theme.radius.md,
+    borderWidth: 1, borderColor: theme.color.warningSoftBorder,
+  },
+  debtBoxHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 },
+  debtBoxTitle: { fontSize: 14, fontWeight: "700", color: theme.color.warningSoftText },
+  debtBoxHint: { fontSize: 11, color: theme.color.warningSoftText, marginTop: 6, fontStyle: "italic" },
   imeiRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   scanBtn: {
     width: 44, height: 44, borderRadius: theme.radius.md,

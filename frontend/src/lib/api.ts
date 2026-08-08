@@ -179,10 +179,32 @@ export const api = {
     request<Phone>(`/phones/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   deletePhone: (id: string) =>
     request<{ ok: boolean }>(`/phones/${id}`, { method: "DELETE" }),
-  sellPhone: (id: string, price?: number, description?: string) =>
-    request<{ phone: Phone; transaction: Transaction }>(`/phones/${id}/sell`, {
+  sellPhone: (
+    id: string,
+    args: { price?: number; paid?: number; method?: string; client_name?: string; client_phone?: string; description?: string }
+  ) =>
+    request<{
+      phone: Phone;
+      transaction: Transaction | null;
+      debt: Debt | null;
+      pending: number;
+      paid: number;
+      price: number;
+    }>(`/phones/${id}/sell`, {
       method: "POST",
-      body: JSON.stringify({ price, description }),
+      body: JSON.stringify(args),
+    }),
+  deliverRepair: (id: string, paid: number, method: string = "efectivo") =>
+    request<{
+      repair: Repair;
+      transaction: Transaction | null;
+      debt: Debt | null;
+      pending: number;
+      paid: number;
+      cost: number;
+    }>(`/repairs/${id}/deliver`, {
+      method: "POST",
+      body: JSON.stringify({ paid, method }),
     }),
 
   // Repairs
