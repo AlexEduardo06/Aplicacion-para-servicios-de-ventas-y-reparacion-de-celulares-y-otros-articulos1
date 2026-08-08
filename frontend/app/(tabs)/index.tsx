@@ -7,8 +7,6 @@ import {
   Pressable,
   RefreshControl,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -16,12 +14,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import BottomSheet, {
   BottomSheetBackdrop,
-  BottomSheetView,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 import { AppTheme } from "@/src/lib/theme";
 import { useTheme } from "@/src/lib/theme-context";
-import { api, DailySummary, formatCurrency, formatDate, Transaction, TxType } from "@/src/lib/api";
+import { api, DailySummary, formatCurrency, formatDate, Phone, Repair, Transaction, TxType } from "@/src/lib/api";
 import { shareTransactionReceipt } from "@/src/lib/receipt";
 
 const CATEGORIES_IN = ["venta", "reparacion", "otro"];
@@ -39,21 +36,33 @@ export default function CajaScreen() {
     count: 0,
   });
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [phones, setPhones] = useState<Phone[]>([]);
+  const [repairs, setRepairs] = useState<Repair[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const sheetRef = useRef<BottomSheet>(null);
+  const detailSheetRef = useRef<BottomSheet>(null);
+  const [detail, setDetail] = useState<Transaction | null>(null);
   const [txType, setTxType] = useState<TxType>("ingreso");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("venta");
   const [description, setDescription] = useState("");
+  const [linkedPhoneId, setLinkedPhoneId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [s, t] = await Promise.all([api.summaryToday(), api.listTransactions()]);
+      const [s, t, p, r] = await Promise.all([
+        api.summaryToday(),
+        api.listTransactions(),
+        api.listPhones(),
+        api.listRepairs(),
+      ]);
       setSummary(s);
       setTransactions(t);
+      setPhones(p);
+      setRepairs(r);
     } catch (e) {
       console.warn("Load error", e);
     } finally {
@@ -71,6 +80,7 @@ export default function CajaScreen() {
     setCategory(type === "ingreso" ? "venta" : "gasto");
     setAmount("");
     setDescription("");
+    setLinkedPhoneId(null);
     sheetRef.current?.expand();
   };
 
@@ -79,12 +89,18 @@ export default function CajaScreen() {
     if (!n || n <= 0) return;
     setSaving(true);
     try {
-      await api.createTransaction({
-        type: txType,
-        amount: n,
-        category,
-        description,
-      });
+      if (txType === "ingreso" && category === "venta" && linkedPhoneId) {
+        // Route through sell endpoint so inventory stock/status updates automatically
+        await api.sellPhone(linkedPhoneId, n, description);
+      } else {
+        await api.createTransaction({
+          type: txType,
+          amount: n,
+          category,
+          description,
+          related_phone_id: linkedPhoneId,
+        });
+      }
       sheetRef.current?.close();
       load();
     } catch (e) {
@@ -92,6 +108,11 @@ export default function CajaScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const openDetail = (tx: Transaction) => {
+    setDetail(tx);
+    detailSheetRef.current?.expand();
   };
 
   const removeTx = async (id: string) => {
@@ -205,51 +226,68 @@ export default function CajaScreen() {
           </View>
         ) : (
           <View style={styles.txList}>
-            {transactions.slice(0, 50).map((tx) => (
-              <View key={tx.id} style={styles.txRow} testID={`tx-row-${tx.id}`}>
-                <View
-                  style={[
-                    styles.txIcon,
-                    {
-                      backgroundColor:
-                        tx.type === "ingreso" ? theme.color.brandTertiary : theme.color.errorSoft,
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name={tx.type === "ingreso" ? "arrow-down" : "arrow-up"}
-                    size={16}
-                    color={tx.type === "ingreso" ? theme.color.brandPrimary : theme.color.error}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.txCategory}>{capitalize(tx.category)}</Text>
-                  <Text style={styles.txMeta} numberOfLines={1}>
-                    {tx.description || "—"} · {formatDate(tx.date)}
-                  </Text>
-                </View>
-                <Text
-                  style={[
-                    styles.txAmount,
-                    { color: tx.type === "ingreso" ? theme.color.brandPrimary : theme.color.error },
-                  ]}
-                >
-                  {tx.type === "ingreso" ? "+" : "-"}
-                  {formatCurrency(tx.amount)}
-                </Text>
+            {transactions.slice(0, 50).map((tx) => {
+              const linkedPhone = tx.related_phone_id ? phones.find((p) => p.id === tx.related_phone_id) : null;
+              const linkedRepair = tx.related_repair_id ? repairs.find((r) => r.id === tx.related_repair_id) : null;
+              return (
                 <Pressable
-                  onPress={() => shareTransactionReceipt(tx)}
-                  hitSlop={8}
-                  testID={`tx-share-${tx.id}`}
-                  style={{ marginLeft: 8 }}
+                  key={tx.id}
+                  onPress={() => openDetail(tx)}
+                  style={styles.txRow}
+                  testID={`tx-row-${tx.id}`}
                 >
-                  <Ionicons name="share-outline" size={18} color={theme.color.brandPrimary} />
+                  <View
+                    style={[
+                      styles.txIcon,
+                      {
+                        backgroundColor:
+                          tx.type === "ingreso" ? theme.color.brandTertiary : theme.color.errorSoft,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={tx.type === "ingreso" ? "arrow-down" : "arrow-up"}
+                      size={16}
+                      color={tx.type === "ingreso" ? theme.color.brandPrimary : theme.color.error}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.txTitleRow}>
+                      <Text style={styles.txCategory}>{capitalize(tx.category)}</Text>
+                      {linkedPhone && (
+                        <View style={styles.linkChip}>
+                          <Ionicons name="phone-portrait" size={10} color={theme.color.brandPrimary} />
+                          <Text style={styles.linkChipText} numberOfLines={1}>
+                            {linkedPhone.brand} {linkedPhone.model}
+                          </Text>
+                        </View>
+                      )}
+                      {linkedRepair && (
+                        <View style={styles.linkChip}>
+                          <Ionicons name="construct" size={10} color={theme.color.brandPrimary} />
+                          <Text style={styles.linkChipText} numberOfLines={1}>
+                            {linkedRepair.client_name}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    {tx.description ? (
+                      <Text style={styles.txDescription} numberOfLines={2}>{tx.description}</Text>
+                    ) : null}
+                    <Text style={styles.txMeta}>{formatDate(tx.date)}</Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.txAmount,
+                      { color: tx.type === "ingreso" ? theme.color.brandPrimary : theme.color.error },
+                    ]}
+                  >
+                    {tx.type === "ingreso" ? "+" : "-"}
+                    {formatCurrency(tx.amount)}
+                  </Text>
                 </Pressable>
-                <Pressable onPress={() => removeTx(tx.id)} hitSlop={8} testID={`tx-delete-${tx.id}`}>
-                  <Ionicons name="trash-outline" size={18} color={theme.color.muted} style={{ marginLeft: 8 }} />
-                </Pressable>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -258,18 +296,18 @@ export default function CajaScreen() {
         ref={sheetRef}
         index={-1}
         enablePanDownToClose
-        snapPoints={["70%"]}
+        snapPoints={["80%"]}
+        keyboardBehavior="interactive"
+        keyboardBlurBehavior="restore"
+        android_keyboardInputMode="adjustResize"
         backdropComponent={(props) => (
           <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />
         )}
         backgroundStyle={{ backgroundColor: theme.color.surfaceSecondary }}
       >
-        <BottomSheetView style={styles.sheetContent}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
-            style={{ flex: 1 }}
-          >
-            <BottomSheetScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+        <BottomSheetScrollView
+          contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: 60 }}
+        >
               <Text style={styles.sheetTitle}>
                 Nuevo {txType === "ingreso" ? "Ingreso" : "Egreso"}
               </Text>
@@ -322,6 +360,47 @@ export default function CajaScreen() {
                 testID="input-description"
               />
 
+              {txType === "ingreso" && category === "venta" && (
+                <>
+                  <Text style={styles.label}>Vincular con celular del inventario (opcional)</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                    <Pressable
+                      onPress={() => setLinkedPhoneId(null)}
+                      style={[styles.chip, !linkedPhoneId && { backgroundColor: theme.color.brandPrimary, borderColor: theme.color.brandPrimary }]}
+                      testID="chip-phone-none"
+                    >
+                      <Text style={[styles.chipText, !linkedPhoneId && { color: "#fff" }]}>Sin vincular</Text>
+                    </Pressable>
+                    {phones
+                      .filter((p) => p.status === "disponible" && p.stock > 0)
+                      .map((p) => {
+                        const active = p.id === linkedPhoneId;
+                        return (
+                          <Pressable
+                            key={p.id}
+                            onPress={() => {
+                              setLinkedPhoneId(p.id);
+                              if (!amount) setAmount(String(p.sell_price));
+                            }}
+                            style={[styles.chip, active && { backgroundColor: theme.color.brandPrimary, borderColor: theme.color.brandPrimary }]}
+                            testID={`chip-phone-${p.id}`}
+                          >
+                            <Ionicons name="phone-portrait" size={12} color={active ? "#fff" : theme.color.brandPrimary} />
+                            <Text style={[styles.chipText, active && { color: "#fff" }, { marginLeft: 4 }]}>
+                              {p.brand} {p.model}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                  </ScrollView>
+                  {linkedPhoneId && (
+                    <Text style={styles.linkHint}>
+                      Al guardar, el celular se marcará como VENDIDO en el inventario.
+                    </Text>
+                  )}
+                </>
+              )}
+
               <Pressable
                 onPress={submit}
                 disabled={saving}
@@ -336,9 +415,111 @@ export default function CajaScreen() {
                   {saving ? "Guardando..." : "Guardar Transacción"}
                 </Text>
               </Pressable>
-            </BottomSheetScrollView>
-          </KeyboardAvoidingView>
-        </BottomSheetView>
+        </BottomSheetScrollView>
+      </BottomSheet>
+
+      {/* Transaction Detail Sheet */}
+      <BottomSheet
+        ref={detailSheetRef}
+        index={-1}
+        enablePanDownToClose
+        snapPoints={["65%"]}
+        backdropComponent={(props) => (
+          <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} />
+        )}
+        backgroundStyle={{ backgroundColor: theme.color.surfaceSecondary }}
+      >
+        {detail && (
+          <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: theme.spacing.lg, paddingBottom: 60 }}>
+            <View style={styles.detailHeader}>
+              <View
+                style={[
+                  styles.txIcon,
+                  { width: 48, height: 48, borderRadius: 24, backgroundColor: detail.type === "ingreso" ? theme.color.brandTertiary : theme.color.errorSoft },
+                ]}
+              >
+                <Ionicons
+                  name={detail.type === "ingreso" ? "arrow-down" : "arrow-up"}
+                  size={22}
+                  color={detail.type === "ingreso" ? theme.color.brandPrimary : theme.color.error}
+                />
+              </View>
+              <Text
+                style={[
+                  styles.detailAmount,
+                  { color: detail.type === "ingreso" ? theme.color.brandPrimary : theme.color.error },
+                ]}
+              >
+                {detail.type === "ingreso" ? "+" : "-"}{formatCurrency(detail.amount)}
+              </Text>
+            </View>
+
+            <DetailRow label="Tipo" value={detail.type === "ingreso" ? "Ingreso" : "Egreso"} styles={styles} />
+            <DetailRow label="Categoría" value={capitalize(detail.category)} styles={styles} />
+            <DetailRow label="Fecha" value={formatDate(detail.date)} styles={styles} />
+            <DetailRow
+              label="Descripción"
+              value={detail.description || "—"}
+              styles={styles}
+              multiline
+            />
+            {detail.related_phone_id && (() => {
+              const p = phones.find((x) => x.id === detail.related_phone_id);
+              if (!p) return null;
+              return (
+                <View style={styles.linkedBox}>
+                  <View style={styles.linkedHeader}>
+                    <Ionicons name="phone-portrait" size={16} color={theme.color.brandPrimary} />
+                    <Text style={styles.linkedTitle}>Celular vendido</Text>
+                  </View>
+                  <DetailRow label="Marca / Modelo" value={`${p.brand} ${p.model}`} styles={styles} />
+                  {p.imei ? <DetailRow label="IMEI" value={p.imei} styles={styles} /> : null}
+                  {p.color ? <DetailRow label="Color" value={p.color} styles={styles} /> : null}
+                  <DetailRow label="Condición" value={capitalize(p.condition)} styles={styles} />
+                  <DetailRow label="Estado" value={p.status === "vendido" ? "Vendido" : "Disponible"} styles={styles} />
+                </View>
+              );
+            })()}
+            {detail.related_repair_id && (() => {
+              const r = repairs.find((x) => x.id === detail.related_repair_id);
+              if (!r) return null;
+              return (
+                <View style={styles.linkedBox}>
+                  <View style={styles.linkedHeader}>
+                    <Ionicons name="construct" size={16} color={theme.color.brandPrimary} />
+                    <Text style={styles.linkedTitle}>Reparación</Text>
+                  </View>
+                  <DetailRow label="Cliente" value={r.client_name} styles={styles} />
+                  <DetailRow label="Equipo" value={r.device} styles={styles} />
+                  <DetailRow label="Falla" value={r.fault} styles={styles} multiline />
+                </View>
+              );
+            })()}
+
+            <View style={{ flexDirection: "row", gap: 10, marginTop: theme.spacing.xl }}>
+              <Pressable
+                onPress={() => shareTransactionReceipt(detail)}
+                style={[styles.detailAction, styles.detailActionPrimary]}
+                testID="btn-detail-share"
+              >
+                <Ionicons name="share-outline" size={18} color="#fff" />
+                <Text style={styles.detailActionTextPrimary}>Compartir recibo</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  const id = detail.id;
+                  detailSheetRef.current?.close();
+                  removeTx(id);
+                }}
+                style={[styles.detailAction, styles.detailActionDanger]}
+                testID="btn-detail-delete"
+              >
+                <Ionicons name="trash-outline" size={18} color={theme.color.error} />
+                <Text style={styles.detailActionTextDanger}>Eliminar</Text>
+              </Pressable>
+            </View>
+          </BottomSheetScrollView>
+        )}
       </BottomSheet>
     </SafeAreaView>
   );
@@ -346,6 +527,27 @@ export default function CajaScreen() {
 
 function capitalize(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1).replace("_", " ");
+}
+
+function DetailRow({
+  label,
+  value,
+  multiline,
+  styles,
+}: {
+  label: string;
+  value: string;
+  multiline?: boolean;
+  styles: ReturnType<typeof buildStyles>;
+}) {
+  return (
+    <View style={styles.detailRow}>
+      <Text style={styles.detailLabel}>{label}</Text>
+      <Text style={[styles.detailValue, multiline && { flex: 1, textAlign: "right" }]} numberOfLines={multiline ? 3 : 1}>
+        {value}
+      </Text>
+    </View>
+  );
 }
 
 const buildStyles = (theme: AppTheme) => StyleSheet.create({
@@ -440,8 +642,53 @@ const buildStyles = (theme: AppTheme) => StyleSheet.create({
     marginRight: 10,
   },
   txCategory: { fontSize: 14, fontWeight: "600", color: theme.color.onSurface },
+  txTitleRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 },
+  txDescription: { fontSize: 13, color: theme.color.onSurfaceTertiary, marginTop: 3, lineHeight: 17 },
+  linkChip: {
+    flexDirection: "row", alignItems: "center", gap: 3,
+    backgroundColor: theme.color.brandTertiary,
+    paddingHorizontal: 6, paddingVertical: 2,
+    borderRadius: theme.radius.pill, maxWidth: 160,
+  },
+  linkChipText: { fontSize: 10, fontWeight: "700", color: theme.color.brandPrimary },
+  linkHint: {
+    fontSize: 11, color: theme.color.brandPrimary,
+    backgroundColor: theme.color.brandTertiary,
+    padding: 8, borderRadius: theme.radius.sm,
+    marginTop: 8,
+  },
   txMeta: { fontSize: 12, color: theme.color.muted, marginTop: 2 },
-  txAmount: { fontSize: 14, fontWeight: "700" },
+  txAmount: { fontSize: 14, fontWeight: "700", marginLeft: 8 },
+  detailHeader: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingVertical: theme.spacing.md, marginBottom: theme.spacing.sm,
+  },
+  detailAmount: { fontSize: 26, fontWeight: "800" },
+  detailRow: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start",
+    paddingVertical: 10,
+    borderTopWidth: 1, borderTopColor: theme.color.divider,
+    gap: 12,
+  },
+  detailLabel: { fontSize: 13, color: theme.color.muted, fontWeight: "500" },
+  detailValue: { fontSize: 14, fontWeight: "600", color: theme.color.onSurface },
+  linkedBox: {
+    marginTop: theme.spacing.md,
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.brandTertiary,
+    borderWidth: 1, borderColor: theme.color.brandPrimary,
+  },
+  linkedHeader: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 },
+  linkedTitle: { fontSize: 13, fontWeight: "800", color: theme.color.brandPrimary, textTransform: "uppercase", letterSpacing: 0.5 },
+  detailAction: {
+    flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+    paddingVertical: 14, borderRadius: theme.radius.md,
+  },
+  detailActionPrimary: { backgroundColor: theme.color.brandPrimary },
+  detailActionDanger: { backgroundColor: "transparent", borderWidth: 1, borderColor: theme.color.error },
+  detailActionTextPrimary: { color: "#fff", fontWeight: "700" },
+  detailActionTextDanger: { color: theme.color.error, fontWeight: "700" },
   sheetContent: { flex: 1, paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.sm },
   sheetTitle: { fontSize: 20, fontWeight: "700", color: theme.color.onSurface, marginBottom: theme.spacing.lg },
   label: { fontSize: 13, fontWeight: "600", color: theme.color.onSurfaceTertiary, marginTop: theme.spacing.md, marginBottom: 6 },
