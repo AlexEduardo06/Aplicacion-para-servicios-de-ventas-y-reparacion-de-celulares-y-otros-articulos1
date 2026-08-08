@@ -678,6 +678,7 @@ class RestoreInput(BaseModel):
     transactions: List[dict] = []
     phones: List[dict] = []
     repairs: List[dict] = []
+    debts: List[dict] = []
     mode: Literal["replace", "merge"] = "replace"
 
 
@@ -687,8 +688,9 @@ async def restore_backup(payload: RestoreInput):
         await db.transactions.delete_many({})
         await db.phones.delete_many({})
         await db.repairs.delete_many({})
+        await db.debts.delete_many({})
 
-    inserted = {"transactions": 0, "phones": 0, "repairs": 0}
+    inserted = {"transactions": 0, "phones": 0, "repairs": 0, "debts": 0}
     if payload.transactions:
         for t in payload.transactions:
             t.pop("_id", None)
@@ -718,6 +720,19 @@ async def restore_backup(payload: RestoreInput):
                 await db.repairs.delete_many({"id": {"$in": ids}})
         await db.repairs.insert_many(payload.repairs)
         inserted["repairs"] = len(payload.repairs)
+    if payload.debts:
+        for d in payload.debts:
+            d.pop("_id", None)
+            d.setdefault("payments", [])
+            d.setdefault("paid_amount", 0.0)
+            d.setdefault("status", "pendiente")
+            d.pop("balance", None)  # computed field
+        if payload.mode == "merge":
+            ids = [d["id"] for d in payload.debts if "id" in d]
+            if ids:
+                await db.debts.delete_many({"id": {"$in": ids}})
+        await db.debts.insert_many(payload.debts)
+        inserted["debts"] = len(payload.debts)
 
     return {"ok": True, "mode": payload.mode, "inserted": inserted}
 
