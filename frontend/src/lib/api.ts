@@ -65,6 +65,34 @@ export interface Repair {
   delivered_at?: string | null;
 }
 
+export type DebtStatus = "pendiente" | "pagado_parcial" | "pagado";
+export type DebtSource = "venta" | "reparacion" | "otro";
+
+export interface DebtPayment {
+  amount: number;
+  date: string;
+  method: string;
+  transaction_id?: string;
+}
+
+export interface Debt {
+  id: string;
+  client_name: string;
+  client_phone?: string;
+  concept: string;
+  source: DebtSource;
+  original_amount: number;
+  paid_amount: number;
+  balance: number;
+  status: DebtStatus;
+  payments: DebtPayment[];
+  due_date?: string | null;
+  notes?: string;
+  related_phone_id?: string | null;
+  related_repair_id?: string | null;
+  created_at: string;
+}
+
 export interface DailySummary {
   ingresos: number;
   egresos: number;
@@ -123,6 +151,24 @@ export const api = {
   search: (q: string) =>
     request<{ transactions: Transaction[]; phones: Phone[]; repairs: Repair[] }>(
       `/search?q=${encodeURIComponent(q)}`
+    ),
+
+  // Debts
+  listDebts: () => request<Debt[]>("/debts"),
+  createDebt: (data: Partial<Debt>) =>
+    request<Debt>("/debts", { method: "POST", body: JSON.stringify(data) }),
+  updateDebt: (id: string, data: Partial<Debt>) =>
+    request<Debt>(`/debts/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteDebt: (id: string) =>
+    request<{ ok: boolean }>(`/debts/${id}`, { method: "DELETE" }),
+  payDebt: (id: string, amount: number, method: string = "efectivo") =>
+    request<Debt>(`/debts/${id}/pay`, {
+      method: "POST",
+      body: JSON.stringify({ amount, method }),
+    }),
+  debtsSummary: () =>
+    request<{ total_pending: number; total_paid: number; total_original: number; count_pending: number; count_paid: number }>(
+      "/debts/summary/totals"
     ),
 
   // Phones

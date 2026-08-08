@@ -20,7 +20,7 @@ export default function TabsLayout() {
           paddingBottom: Platform.OS === "ios" ? 28 : 8,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: "600",
         },
         sceneStyle: { backgroundColor: theme.color.surface },
@@ -54,6 +54,16 @@ export default function TabsLayout() {
             <Ionicons name="construct-outline" size={size} color={color} />
           ),
           tabBarButtonTestID: "tab-reparaciones",
+        }}
+      />
+      <Tabs.Screen
+        name="deudas"
+        options={{
+          title: "Deudas",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="cash-outline" size={size} color={color} />
+          ),
+          tabBarButtonTestID: "tab-deudas",
         }}
       />
       <Tabs.Screen

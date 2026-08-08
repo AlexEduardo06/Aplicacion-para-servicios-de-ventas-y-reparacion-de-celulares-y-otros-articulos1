@@ -119,6 +119,51 @@ class RepairUpdate(BaseModel):
     photos: Optional[List[RepairPhoto]] = None
 
 
+# Debts (accounts receivable)
+class Payment(BaseModel):
+    amount: float
+    date: str
+    method: str = "efectivo"
+    transaction_id: Optional[str] = None
+
+
+class DebtCreate(BaseModel):
+    client_name: str
+    client_phone: Optional[str] = ""
+    concept: str
+    source: Literal["venta", "reparacion", "otro"] = "otro"
+    original_amount: float
+    due_date: Optional[str] = None
+    notes: Optional[str] = ""
+    related_phone_id: Optional[str] = None
+    related_repair_id: Optional[str] = None
+
+
+class Debt(DebtCreate):
+    id: str
+    paid_amount: float = 0
+    balance: float
+    status: Literal["pendiente", "pagado_parcial", "pagado"] = "pendiente"
+    payments: List[Payment] = []
+    created_at: str
+
+
+class DebtUpdate(BaseModel):
+    client_name: Optional[str] = None
+    client_phone: Optional[str] = None
+    concept: Optional[str] = None
+    source: Optional[str] = None
+    original_amount: Optional[float] = None
+    due_date: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class PayDebtInput(BaseModel):
+    amount: float
+    method: str = "efectivo"
+    date: Optional[str] = None
+
+
 # ------------------- ROUTES -------------------
 
 @api_router.get("/")
@@ -466,18 +511,166 @@ async def backup_all():
         d.setdefault("photos", [])
         d.setdefault("listo_at", None)
         repairs.append(d)
+    debts = []
+    async for d in db.debts.find({}, {"_id": 0}):
+        d.setdefault("payments", [])
+        debts.append(d)
     return {
         "exported_at": now_iso(),
         "app": "The Family Solutions",
-        "version": 1,
+        "version": 2,
         "counts": {
             "transactions": len(transactions),
             "phones": len(phones),
             "repairs": len(repairs),
+            "debts": len(debts),
         },
         "transactions": transactions,
         "phones": phones,
         "repairs": repairs,
+        "debts": debts,
+    }
+
+
+def _debt_hydrate(doc: dict) -> Debt:
+    doc.setdefault("paid_amount", 0.0)
+    doc.setdefault("payments", [])
+    doc.setdefault("status", "pendiente")
+    doc["balance"] = round(float(doc["original_amount"]) - float(doc["paid_amount"]), 2)
+    return Debt(**doc)
+
+
+@api_router.post("/debts", response_model=Debt)
+async def create_debt(input: DebtCreate):
+    data = input.model_dump()
+    data["id"] = str(uuid.uuid4())
+    data["created_at"] = now_iso()
+    data["paid_amount"] = 0.0
+    data["payments"] = []
+    data["status"] = "pendiente"
+    to_insert = {**data}
+    to_insert.pop("balance", None)
+    await db.debts.insert_one(to_insert)
+    to_insert.pop("_id", None)
+    return _debt_hydrate(to_insert)
+
+
+@api_router.get("/debts", response_model=List[Debt])
+async def list_debts():
+    cursor = db.debts.find({}, {"_id": 0}).sort("created_at", -1)
+    out = []
+    async for doc in cursor:
+        out.append(_debt_hydrate(doc))
+    return out
+
+
+@api_router.get("/debts/{debt_id}", response_model=Debt)
+async def get_debt(debt_id: str):
+    doc = await db.debts.find_one({"id": debt_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(404, "Debt not found")
+    return _debt_hydrate(doc)
+
+
+@api_router.put("/debts/{debt_id}", response_model=Debt)
+async def update_debt(debt_id: str, input: DebtUpdate):
+    update = {k: v for k, v in input.model_dump().items() if v is not None}
+    if not update:
+        raise HTTPException(400, "Nothing to update")
+    res = await db.debts.find_one_and_update(
+        {"id": debt_id}, {"$set": update}, return_document=True, projection={"_id": 0}
+    )
+    if not res:
+        raise HTTPException(404, "Debt not found")
+    return _debt_hydrate(res)
+
+
+@api_router.delete("/debts/{debt_id}")
+async def delete_debt(debt_id: str):
+    res = await db.debts.delete_one({"id": debt_id})
+    if res.deleted_count == 0:
+        raise HTTPException(404, "Debt not found")
+    return {"ok": True}
+
+
+@api_router.post("/debts/{debt_id}/pay", response_model=Debt)
+async def pay_debt(debt_id: str, input: PayDebtInput):
+    debt = await db.debts.find_one({"id": debt_id}, {"_id": 0})
+    if not debt:
+        raise HTTPException(404, "Debt not found")
+    if input.amount <= 0:
+        raise HTTPException(400, "El monto del pago debe ser mayor que 0")
+
+    already_paid = float(debt.get("paid_amount", 0))
+    original = float(debt["original_amount"])
+    remaining = original - already_paid
+    if remaining <= 0:
+        raise HTTPException(400, "Esta deuda ya está saldada")
+
+    pay_amount = min(input.amount, remaining)
+    when = input.date or now_iso()
+
+    # Create linked transaction in caja
+    category = "venta" if debt.get("source") == "venta" else (
+        "reparacion" if debt.get("source") == "reparacion" else "otro"
+    )
+    desc = f"Pago deuda: {debt['client_name']} — {debt['concept']}"
+    tx = {
+        "id": str(uuid.uuid4()),
+        "type": "ingreso",
+        "amount": float(pay_amount),
+        "category": category,
+        "description": desc,
+        "related_phone_id": debt.get("related_phone_id"),
+        "related_repair_id": debt.get("related_repair_id"),
+        "date": when,
+    }
+    await db.transactions.insert_one(tx)
+    tx.pop("_id", None)
+
+    payment = {
+        "amount": float(pay_amount),
+        "date": when,
+        "method": input.method,
+        "transaction_id": tx["id"],
+    }
+    new_paid = round(already_paid + pay_amount, 2)
+    new_status = "pagado" if new_paid >= original else "pagado_parcial"
+
+    await db.debts.update_one(
+        {"id": debt_id},
+        {
+            "$set": {"paid_amount": new_paid, "status": new_status},
+            "$push": {"payments": payment},
+        },
+    )
+    updated = await db.debts.find_one({"id": debt_id}, {"_id": 0})
+    return _debt_hydrate(updated)
+
+
+@api_router.get("/debts/summary/totals")
+async def debts_summary():
+    total_pending = 0.0
+    total_original = 0.0
+    total_paid = 0.0
+    count_pending = 0
+    count_paid = 0
+    async for d in db.debts.find({}, {"_id": 0}):
+        original = float(d.get("original_amount", 0))
+        paid = float(d.get("paid_amount", 0))
+        total_original += original
+        total_paid += paid
+        if paid >= original:
+            count_paid += 1
+        else:
+            count_pending += 1
+            total_pending += original - paid
+    return {
+        "total_pending": round(total_pending, 2),
+        "total_paid": round(total_paid, 2),
+        "total_original": round(total_original, 2),
+        "count_pending": count_pending,
+        "count_paid": count_paid,
     }
 
 
