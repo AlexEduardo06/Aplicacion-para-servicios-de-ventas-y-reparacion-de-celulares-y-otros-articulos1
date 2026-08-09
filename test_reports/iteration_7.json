@@ -1,0 +1,34 @@
+{
+  "summary": "Frontend-only bug fix verification: 'Registrar Deuda' button silent failure. All 4 validation branches + happy paths verified in real Expo web preview at mobile viewport (390x844). Root cause was RangeError from new Date('<invalid>T23:59:59Z').toISOString() being swallowed by try/catch. Fix (regex validation of YYYY-MM-DD + isNaN check + inline formError state) works correctly.",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_scenarios_executed": [
+    { "case": "Empty client -> error", "expected": "El nombre del cliente es requerido", "actual": "El nombre del cliente es requerido", "status": "PASS" },
+    { "case": "Empty concept -> error", "expected": "El concepto es requerido", "actual": "El concepto es requerido", "status": "PASS" },
+    { "case": "Empty/zero amount -> error", "expected": "Ingresa un monto válido mayor a 0", "actual": "Ingresa un monto válido mayor a 0", "status": "PASS" },
+    { "case": "Invalid due_date '31/12/2026' -> inline error, no silent fail", "expected": "Fecha inválida. Usa el formato YYYY-MM-DD", "actual": "Fecha inválida. Usa el formato YYYY-MM-DD", "status": "PASS" },
+    { "case": "Invalid due_date 'mañana' -> inline error", "expected": "Fecha inválida. Usa el formato YYYY-MM-DD", "actual": "Fecha inválida. Usa el formato YYYY-MM-DD", "status": "PASS" },
+    { "case": "Valid due_date '2026-12-31' -> creates debt, sheet closes, chip shows 'Vence: 31 dic de 2026'", "status": "PASS" },
+    { "case": "No due_date + valid fields -> creates debt", "status": "PASS" },
+    { "case": "Detail sheet opens with register payment + delete buttons visible", "status": "PASS" },
+    { "case": "Reparaciones due_date validation (silent per spec) - code review verified same regex + isNaN pattern applied in submitNew()", "status": "PASS (code review)" }
+  ],
+  "test_report_links": ["/tmp/after_valid_submit.png", "/tmp/detail_sheet.png"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Reparaciones submitNew() intentionally returns silently on invalid due_date per spec (feedback opcional). Consider surfacing an inline error like Deudas for consistency in a future iteration, but not required by current problem statement.",
+    "React 19 ref-as-prop warnings and pointerEvents deprecation warnings appear in console (from @gorhom/bottom-sheet). Not blocking - upstream library issue."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "N/A (frontend-only)", "frontend": "100%" },
+  "seed_data_creation": "Created 2 TEST_ debts via UI during testing (TEST Cliente Uno, TEST Cliente Dos). Cleanup not performed; main agent may want to remove.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Bug 'botón Registrar Deuda no funciona' is fully resolved. All 4 validation error messages render inline via testID='debt-form-error'. Valid dates create debt with correct due chip. Same regex+isNaN pattern applied to reparaciones (silent return, no user-visible error).",
+  "rca_of_issue": "Original bug: user entered a non-ISO date (e.g. '31/12/2026') in due_date, and `new Date('31/12/2026T23:59:59Z').toISOString()` threw RangeError inside submit's try/catch, which was silently caught with only console.warn, so no UI feedback -> button appeared broken. Fix applied by E1: (1) regex `/^(\\d{4})-(\\d{2})-(\\d{2})$/` pre-validation, (2) isNaN(date.getTime()) sanity check, (3) new formError state rendered in testID='debt-form-error' box, (4) backend errors piped to same box. Verified working end-to-end."
+}

@@ -49,6 +49,7 @@ export default function DeudasScreen() {
     notes: "",
   });
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [payAmount, setPayAmount] = useState("");
   const [payMethod, setPayMethod] = useState("efectivo");
@@ -71,27 +72,48 @@ export default function DeudasScreen() {
 
   const openAdd = () => {
     setForm({ client_name: "", client_phone: "", concept: "", source: "venta", original_amount: "", due_date: "", notes: "" });
+    setFormError(null);
     addSheetRef.current?.expand();
   };
 
   const submit = async () => {
-    const amt = parseFloat(form.original_amount.replace(",", "."));
-    if (!form.client_name.trim() || !form.concept.trim() || !amt || amt <= 0) return;
+    setFormError(null);
+    const clientName = form.client_name.trim();
+    const concept = form.concept.trim();
+    const amt = parseFloat((form.original_amount || "").replace(",", "."));
+    if (!clientName) { setFormError("El nombre del cliente es requerido"); return; }
+    if (!concept) { setFormError("El concepto es requerido"); return; }
+    if (!amt || amt <= 0) { setFormError("Ingresa un monto válido mayor a 0"); return; }
+
+    let dueIso: string | null = null;
+    const rawDue = form.due_date.trim();
+    if (rawDue) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawDue);
+      if (!match) { setFormError("Fecha inválida. Usa el formato YYYY-MM-DD"); return; }
+      const d = new Date(`${rawDue}T23:59:59.000Z`);
+      if (isNaN(d.getTime())) { setFormError("Fecha inválida. Usa el formato YYYY-MM-DD"); return; }
+      dueIso = d.toISOString();
+    }
+
     setSaving(true);
     try {
       await api.createDebt({
-        client_name: form.client_name.trim(),
+        client_name: clientName,
         client_phone: form.client_phone.trim(),
-        concept: form.concept.trim(),
+        concept,
         source: form.source,
         original_amount: amt,
-        due_date: form.due_date.trim() ? new Date(`${form.due_date.trim()}T23:59:59.000Z`).toISOString() : null,
+        due_date: dueIso,
         notes: form.notes.trim(),
       });
       addSheetRef.current?.close();
       load();
-    } catch (e) { console.warn(e); }
-    finally { setSaving(false); }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "No se pudo guardar la deuda";
+      setFormError(msg);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openDetail = (d: Debt) => {
@@ -334,6 +356,13 @@ export default function DeudasScreen() {
           <Text style={styles.label}>Notas (opcional)</Text>
           <TextInput style={[styles.input, { height: 70, textAlignVertical: "top" }]} value={form.notes} onChangeText={(v) => setForm((f) => ({ ...f, notes: v }))} multiline placeholderTextColor={theme.color.muted} testID="input-debt-notes" />
 
+          {formError && (
+            <View style={styles.errorBox} testID="debt-form-error">
+              <Ionicons name="alert-circle" size={16} color={theme.color.error} />
+              <Text style={styles.errorText}>{formError}</Text>
+            </View>
+          )}
+
           <Pressable onPress={submit} disabled={saving} style={[styles.submitBtn, saving && { opacity: 0.6 }]} testID="btn-submit-debt">
             <Text style={styles.submitBtnText}>{saving ? "Guardando..." : "Registrar Deuda"}</Text>
           </Pressable>
@@ -573,6 +602,15 @@ const buildStyles = (theme: AppTheme) => StyleSheet.create({
     alignItems: "center", marginTop: theme.spacing.xl,
   },
   submitBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  errorBox: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    padding: theme.spacing.md,
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.color.errorSoft,
+    borderWidth: 1, borderColor: theme.color.error,
+    marginTop: theme.spacing.md,
+  },
+  errorText: { flex: 1, fontSize: 13, color: theme.color.error, fontWeight: "600" },
   balanceBig: {
     alignItems: "center",
     paddingVertical: theme.spacing.lg,

@@ -111,6 +111,14 @@ export default function ReparacionesScreen() {
 
   const submitNew = async () => {
     if (!form.client_name.trim() || !form.device.trim() || !form.fault.trim()) return;
+    let dueIso: string | null = null;
+    const rawDue = form.due_date.trim();
+    if (rawDue) {
+      if (!/^(\d{4})-(\d{2})-(\d{2})$/.test(rawDue)) return;
+      const d = new Date(`${rawDue}T23:59:59.000Z`);
+      if (isNaN(d.getTime())) return;
+      dueIso = d.toISOString();
+    }
     setSaving(true);
     try {
       await api.createRepair({
@@ -120,7 +128,7 @@ export default function ReparacionesScreen() {
         fault: form.fault.trim(),
         cost: parseFloat(form.cost || "0") || 0,
         notes: form.notes.trim(),
-        due_date: form.due_date.trim() ? new Date(`${form.due_date.trim()}T23:59:59.000Z`).toISOString() : null,
+        due_date: dueIso,
         status: "recibido",
       });
       sheetRef.current?.close();
