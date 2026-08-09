@@ -17,7 +17,7 @@ import BottomSheet, {
 } from "@gorhom/bottom-sheet";
 import { AppTheme } from "@/src/lib/theme";
 import { useTheme } from "@/src/lib/theme-context";
-import { api, Debt, DebtSource, formatCurrency, formatDate } from "@/src/lib/api";
+import { api, Debt, DebtSource, daysUntil, formatCurrency, formatDate, formatDateOnly } from "@/src/lib/api";
 
 const SOURCES: { key: DebtSource; label: string }[] = [
   { key: "venta", label: "Venta" },
@@ -45,6 +45,7 @@ export default function DeudasScreen() {
     concept: "",
     source: "venta" as DebtSource,
     original_amount: "",
+    due_date: "",
     notes: "",
   });
   const [saving, setSaving] = useState(false);
@@ -69,7 +70,7 @@ export default function DeudasScreen() {
   }, [debts, tab]);
 
   const openAdd = () => {
-    setForm({ client_name: "", client_phone: "", concept: "", source: "venta", original_amount: "", notes: "" });
+    setForm({ client_name: "", client_phone: "", concept: "", source: "venta", original_amount: "", due_date: "", notes: "" });
     addSheetRef.current?.expand();
   };
 
@@ -84,6 +85,7 @@ export default function DeudasScreen() {
         concept: form.concept.trim(),
         source: form.source,
         original_amount: amt,
+        due_date: form.due_date.trim() ? new Date(`${form.due_date.trim()}T23:59:59.000Z`).toISOString() : null,
         notes: form.notes.trim(),
       });
       addSheetRef.current?.close();
@@ -227,6 +229,45 @@ export default function DeudasScreen() {
                     {isPaid ? "✓ Saldado" : `Debe ${formatCurrency(item.balance)}`}
                   </Text>
                 </View>
+                {item.due_date && !isPaid && (() => {
+                  const d = daysUntil(item.due_date);
+                  const overdue = d < 0;
+                  return (
+                    <View
+                      style={[
+                        styles.dueChip,
+                        overdue
+                          ? { backgroundColor: theme.color.errorSoft }
+                          : d <= 1
+                            ? { backgroundColor: theme.color.warningSoft }
+                            : { backgroundColor: theme.color.surfaceTertiary },
+                      ]}
+                      testID={`debt-due-${item.id}`}
+                    >
+                      <Ionicons
+                        name="calendar-outline"
+                        size={12}
+                        color={overdue ? theme.color.error : d <= 1 ? theme.color.warning : theme.color.muted}
+                      />
+                      <Text
+                        style={[
+                          styles.dueChipText,
+                          {
+                            color: overdue ? theme.color.error : d <= 1 ? theme.color.warningSoftText : theme.color.onSurfaceTertiary,
+                          },
+                        ]}
+                      >
+                        {overdue
+                          ? `Vencida hace ${Math.abs(d)} día${Math.abs(d) === 1 ? "" : "s"}`
+                          : d === 0
+                            ? "Vence hoy"
+                            : d === 1
+                              ? "Vence mañana"
+                              : `Vence: ${formatDateOnly(item.due_date)}`}
+                      </Text>
+                    </View>
+                  );
+                })()}
               </Pressable>
             );
           }}
@@ -279,6 +320,17 @@ export default function DeudasScreen() {
           <Text style={styles.label}>Monto adeudado (RD$)</Text>
           <TextInput style={styles.input} value={form.original_amount} onChangeText={(v) => setForm((f) => ({ ...f, original_amount: v }))} placeholder="0.00" keyboardType="decimal-pad" placeholderTextColor={theme.color.muted} testID="input-debt-amount" />
 
+          <Text style={styles.label}>Fecha límite de pago (opcional)</Text>
+          <TextInput
+            style={styles.input}
+            value={form.due_date}
+            onChangeText={(v) => setForm((f) => ({ ...f, due_date: v }))}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={theme.color.muted}
+            autoCapitalize="none"
+            testID="input-debt-due-date"
+          />
+
           <Text style={styles.label}>Notas (opcional)</Text>
           <TextInput style={[styles.input, { height: 70, textAlignVertical: "top" }]} value={form.notes} onChangeText={(v) => setForm((f) => ({ ...f, notes: v }))} multiline placeholderTextColor={theme.color.muted} testID="input-debt-notes" />
 
@@ -328,6 +380,21 @@ export default function DeudasScreen() {
               <Text style={styles.detailLabel}>Registrada</Text>
               <Text style={styles.detailValue}>{formatDate(detail.created_at)}</Text>
             </View>
+            {detail.due_date ? (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Vence</Text>
+                <Text
+                  style={[
+                    styles.detailValue,
+                    daysUntil(detail.due_date) < 0 && detail.status !== "pagado"
+                      ? { color: theme.color.error }
+                      : null,
+                  ]}
+                >
+                  {formatDateOnly(detail.due_date)}
+                </Text>
+              </View>
+            ) : null}
             {detail.notes ? (
               <View style={styles.detailRow}>
                 <Text style={styles.detailLabel}>Notas</Text>
@@ -473,6 +540,14 @@ const buildStyles = (theme: AppTheme) => StyleSheet.create({
   cardFooter: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 },
   cardMeta: { fontSize: 12, color: theme.color.muted },
   cardBalance: { fontSize: 14, fontWeight: "800" },
+  dueChip: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    alignSelf: "flex-start",
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: theme.radius.pill,
+    marginTop: 6,
+  },
+  dueChipText: { fontSize: 11, fontWeight: "700" },
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: theme.radius.pill, marginLeft: 8 },
   badgeText: { fontSize: 11, fontWeight: "700" },
   sheetTitle: { fontSize: 20, fontWeight: "700", color: theme.color.onSurface, marginTop: 4, marginBottom: 4 },

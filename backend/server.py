@@ -98,6 +98,7 @@ class RepairCreate(BaseModel):
     status: Literal["recibido", "en_progreso", "listo", "entregado"] = "recibido"
     notes: Optional[str] = ""
     photos: Optional[List[RepairPhoto]] = None
+    due_date: Optional[str] = None
 
 
 class Repair(RepairCreate):
@@ -117,6 +118,7 @@ class RepairUpdate(BaseModel):
     status: Optional[str] = None
     notes: Optional[str] = None
     photos: Optional[List[RepairPhoto]] = None
+    due_date: Optional[str] = None
 
 
 # Debts (accounts receivable)
@@ -550,6 +552,7 @@ async def deliver_repair(repair_id: str, input: DeliverRepairInput):
     updated_repair = await db.repairs.find_one({"id": repair_id}, {"_id": 0})
     updated_repair.setdefault("photos", [])
     updated_repair.setdefault("listo_at", None)
+    updated_repair.setdefault("due_date", None)
     return {
         "repair": Repair(**updated_repair).model_dump(),
         "transaction": tx,
@@ -583,6 +586,7 @@ async def list_repairs():
     async for doc in cursor:
         doc.setdefault("photos", [])
         doc.setdefault("listo_at", None)
+        doc.setdefault("due_date", None)
         out.append(Repair(**doc))
     return out
 
@@ -605,6 +609,7 @@ async def update_repair(repair_id: str, input: RepairUpdate):
         raise HTTPException(404, "Repair not found")
     res.setdefault("photos", [])
     res.setdefault("listo_at", None)
+    res.setdefault("due_date", None)
     return Repair(**res)
 
 

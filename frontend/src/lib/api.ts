@@ -63,6 +63,7 @@ export interface Repair {
   created_at: string;
   listo_at?: string | null;
   delivered_at?: string | null;
+  due_date?: string | null;
 }
 
 export type DebtStatus = "pendiente" | "pagado_parcial" | "pagado";
@@ -241,4 +242,31 @@ export function daysSince(iso: string | null | undefined): number {
   const t = new Date(iso).getTime();
   if (isNaN(t)) return 0;
   return Math.floor((Date.now() - t) / 86400000);
+}
+
+export function formatDateOnly(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("es-DO", { day: "2-digit", month: "short", year: "numeric" });
+  } catch {
+    return "";
+  }
+}
+
+export function isOverdue(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return false;
+  d.setUTCHours(23, 59, 59, 999);
+  return d.getTime() < Date.now();
+}
+
+export function daysUntil(iso: string | null | undefined): number {
+  if (!iso) return 0;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return 0;
+  d.setUTCHours(23, 59, 59, 999);
+  return Math.ceil((d.getTime() - Date.now()) / 86400000);
 }

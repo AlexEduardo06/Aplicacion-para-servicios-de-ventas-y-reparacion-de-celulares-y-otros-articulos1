@@ -19,7 +19,7 @@ import BottomSheet, {
 import * as ImagePicker from "expo-image-picker";
 import { AppTheme } from "@/src/lib/theme";
 import { useTheme } from "@/src/lib/theme-context";
-import { api, daysSince, formatCurrency, formatDate, Repair, RepairPhoto, RepairStatus } from "@/src/lib/api";
+import { api, daysSince, daysUntil, formatCurrency, formatDate, formatDateOnly, Repair, RepairPhoto, RepairStatus } from "@/src/lib/api";
 import { shareRepairReceipt } from "@/src/lib/receipt";
 import { storage } from "@/src/utils/storage";
 
@@ -58,6 +58,7 @@ export default function ReparacionesScreen() {
     fault: "",
     cost: "",
     notes: "",
+    due_date: "",
   });
   const [saving, setSaving] = useState(false);
   const [deliverPaid, setDeliverPaid] = useState("");
@@ -104,7 +105,7 @@ export default function ReparacionesScreen() {
   const overdueCount = overdueIds.size;
 
   const openNew = () => {
-    setForm({ client_name: "", client_phone: "", device: "", fault: "", cost: "", notes: "" });
+    setForm({ client_name: "", client_phone: "", device: "", fault: "", cost: "", notes: "", due_date: "" });
     sheetRef.current?.expand();
   };
 
@@ -119,6 +120,7 @@ export default function ReparacionesScreen() {
         fault: form.fault.trim(),
         cost: parseFloat(form.cost || "0") || 0,
         notes: form.notes.trim(),
+        due_date: form.due_date.trim() ? new Date(`${form.due_date.trim()}T23:59:59.000Z`).toISOString() : null,
         status: "recibido",
       });
       sheetRef.current?.close();
@@ -304,6 +306,46 @@ export default function ReparacionesScreen() {
                     </Text>
                   </View>
                 )}
+                {item.due_date && item.status !== "entregado" && (() => {
+                  const d = daysUntil(item.due_date);
+                  const overdueDate = d < 0;
+                  const soon = d >= 0 && d <= 1;
+                  return (
+                    <View
+                      style={[
+                        styles.dueChip,
+                        overdueDate
+                          ? { backgroundColor: theme.color.errorSoft }
+                          : soon
+                            ? { backgroundColor: theme.color.warningSoft }
+                            : { backgroundColor: theme.color.surfaceTertiary },
+                      ]}
+                      testID={`due-${item.id}`}
+                    >
+                      <Ionicons
+                        name="calendar-outline"
+                        size={12}
+                        color={overdueDate ? theme.color.error : soon ? theme.color.warning : theme.color.muted}
+                      />
+                      <Text
+                        style={[
+                          styles.dueChipText,
+                          {
+                            color: overdueDate ? theme.color.error : soon ? theme.color.warningSoftText : theme.color.onSurfaceTertiary,
+                          },
+                        ]}
+                      >
+                        {overdueDate
+                          ? `Vencida hace ${Math.abs(d)} día${Math.abs(d) === 1 ? "" : "s"}`
+                          : d === 0
+                            ? "Vence hoy"
+                            : d === 1
+                              ? "Vence mañana"
+                              : `Entrega: ${formatDateOnly(item.due_date)}`}
+                      </Text>
+                    </View>
+                  );
+                })()}
                 <View style={styles.cardFooter}>
                   <Text style={styles.cardMeta}>{formatDate(item.created_at)}</Text>
                   <Text style={styles.cardCost}>{formatCurrency(item.cost)}</Text>
@@ -347,6 +389,17 @@ export default function ReparacionesScreen() {
 
               <Text style={styles.label}>Costo (RD$)</Text>
               <TextInput style={styles.input} value={form.cost} onChangeText={(v) => setForm((f) => ({ ...f, cost: v }))} placeholder="0.00" keyboardType="decimal-pad" placeholderTextColor={theme.color.muted} testID="input-cost" />
+
+              <Text style={styles.label}>Fecha de entrega prometida (opcional)</Text>
+              <TextInput
+                style={styles.input}
+                value={form.due_date}
+                onChangeText={(v) => setForm((f) => ({ ...f, due_date: v }))}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={theme.color.muted}
+                autoCapitalize="none"
+                testID="input-repair-due-date"
+              />
 
               <Text style={styles.label}>Notas técnicas (opcional)</Text>
               <TextInput style={[styles.input, { height: 60, textAlignVertical: "top" }]} value={form.notes} onChangeText={(v) => setForm((f) => ({ ...f, notes: v }))} multiline placeholderTextColor={theme.color.muted} testID="input-notes" />
@@ -584,6 +637,14 @@ const buildStyles = (theme: AppTheme) => StyleSheet.create({
     marginTop: 8,
   },
   overdueChipText: { fontSize: 11, fontWeight: "700", color: theme.color.warningSoftText },
+  dueChip: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    alignSelf: "flex-start",
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: theme.radius.pill,
+    marginTop: 6,
+  },
+  dueChipText: { fontSize: 11, fontWeight: "700" },
   photoSectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   photoAddBtn: {
     flexDirection: "row", alignItems: "center", gap: 4,
